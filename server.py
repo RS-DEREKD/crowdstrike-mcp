@@ -1,0 +1,192 @@
+#!/usr/bin/env python3
+"""
+CrowdStrike Falcon MCP Server — Modular Architecture (v3.0)
+
+Multi-transport MCP server with auto-discovered tool modules.
+
+Transports:
+  stdio            — Default, for Claude Code / MCP stdio clients
+  sse              — Server-Sent Events over HTTP
+  streamable-http  — Streamable HTTP transport
+
+Usage:
+  python server.py                                    # stdio (default)
+  python server.py --transport sse --port 8000        # SSE
+  python server.py --modules ngsiem,alerts,hosts      # Selective modules
+  python server.py --debug                            # Debug logging
+
+Environment variables (override CLI args):
+  FALCON_CLIENT_ID, FALCON_CLIENT_SECRET, FALCON_BASE_URL
+  FALCON_MCP_TRANSPORT, FALCON_MCP_MODULES, FALCON_MCP_DEBUG
+  FALCON_MCP_HOST, FALCON_MCP_PORT, FALCON_MCP_API_KEY
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import sys
+
+# Ensure the mcp/ directory is on sys.path so that modules, common, etc.
+# are importable regardless of the caller's working directory.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
+from mcp.server.fastmcp import FastMCP
+
+from client import FalconClient, SERVER_VERSION
+from registry import get_available_modules, get_module_names
+
+
+class FalconMCPServer:
+    """Orchestrates module discovery, registration, and transport startup."""
+
+    def __init__(
+        self,
+        transport: str = "stdio",
+        modules_filter: set[str] | None = None,
+        debug: bool = False,
+        host: str = "127.0.0.1",
+        port: int = 8000,
+        api_key: str | None = None,
+        client_id: str | None = None,
+        client_secret: str | None = None,
+        base_url: str | None = None,
+    ):
+        self.transport = transport
+        self.debug = debug
+        self.host = host
+        self.port = port
+        self.api_key = api_key
+
+        # Create shared API client and verify credentials eagerly
+        self.client = FalconClient(
+            client_id=client_id,
+            client_secret=client_secret,
+            base_url=base_url,
+        )
+        self.client.authenticate()
+
+        # Create FastMCP server
+        self.server = FastMCP("crowdstrike-falcon")
+
+        # Discover and register modules
+        self._modules = get_available_modules(self.client, enabled=modules_filter)
+
+        for mod in self._modules:
+            mod.register_tools(self.server)
+            mod.register_resources(self.server)
+
+        tool_count = sum(len(m.tools) for m in self._modules)
+        resource_count = sum(len(m.resources) for m in self._modules)
+        self._log(
+            f"Registered {tool_count} tools and {resource_count} resources "
+            f"from {len(self._modules)} modules"
+        )
+
+    def run(self):
+        """Start the server with the configured transport."""
+        if self.transport == "stdio":
+            self._log("Starting stdio transport")
+            self.server.run(transport="stdio")
+
+        elif self.transport == "sse":
+            self._run_http("sse")
+
+        elif self.transport == "streamable-http":
+            self._run_http("streamable-http")
+
+        else:
+            raise ValueError(f"Unknown transport: {self.transport}")
+
+    def _run_http(self, transport_type: str):
+        """Start an HTTP-based transport (SSE or streamable-http) with optional auth."""
+        import uvicorn
+
+        if transport_type == "sse":
+            app = self.server.sse_app()
+        else:
+            app = self.server.streamable_http_app()
+
+        # Wrap with API key middleware if configured
+        if self.api_key:
+            from common.auth_middleware import auth_middleware
+            app = auth_middleware(app, self.api_key)
+            self._log(f"API key authentication enabled for {transport_type}")
+
+        self._log(f"Starting {transport_type} transport on {self.host}:{self.port}")
+        uvicorn.run(app, host=self.host, port=self.port)
+
+    def _log(self, message: str):
+        print(f"[FalconMCPServer] {message}", file=sys.stderr)
+
+
+def parse_args() -> argparse.Namespace:
+    """Parse CLI arguments with env var fallbacks."""
+    parser = argparse.ArgumentParser(
+        description="CrowdStrike Falcon MCP Server",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+
+    parser.add_argument(
+        "--transport",
+        default=os.environ.get("FALCON_MCP_TRANSPORT", "stdio"),
+        choices=["stdio", "sse", "streamable-http"],
+        help="Transport protocol (default: stdio)",
+    )
+    parser.add_argument(
+        "--modules",
+        default=os.environ.get("FALCON_MCP_MODULES"),
+        help="Comma-separated list of modules to load (default: all)",
+    )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        default=os.environ.get("FALCON_MCP_DEBUG", "").lower() in ("1", "true", "yes"),
+        help="Enable debug logging",
+    )
+    parser.add_argument(
+        "--host",
+        default=os.environ.get("FALCON_MCP_HOST", "127.0.0.1"),
+        help="HTTP host (default: 127.0.0.1)",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=int(os.environ.get("FALCON_MCP_PORT", "8000")),
+        help="HTTP port (default: 8000)",
+    )
+    parser.add_argument(
+        "--api-key",
+        default=os.environ.get("FALCON_MCP_API_KEY"),
+        help="API key for HTTP transport authentication",
+    )
+
+    return parser.parse_args()
+
+
+def main():
+    """CLI entry point."""
+    args = parse_args()
+
+    modules_filter = None
+    if args.modules:
+        modules_filter = {m.strip() for m in args.modules.split(",")}
+
+    falcon_server = FalconMCPServer(
+        transport=args.transport,
+        modules_filter=modules_filter,
+        debug=args.debug,
+        host=args.host,
+        port=args.port,
+        api_key=args.api_key,
+    )
+
+    falcon_server.run()
+
+
+if __name__ == "__main__":
+    main()

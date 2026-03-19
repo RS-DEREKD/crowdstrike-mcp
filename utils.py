@@ -1,0 +1,272 @@
+"""
+Shared utilities for CrowdStrike MCP Server.
+Credential loading, response formatting, composite ID parsing, and input sanitization.
+"""
+
+import json
+import os
+import re
+import sys
+import tempfile
+from datetime import datetime
+from typing import Dict, Optional, List, Union
+from urllib.parse import urlparse, parse_qs, unquote
+
+
+# Large response handling
+LARGE_RESPONSE_THRESHOLD = int(os.environ.get('MCP_LARGE_RESPONSE_THRESHOLD', '20000'))
+MCP_OUTPUT_DIR = os.path.join(tempfile.gettempdir(), 'crowdstrike-mcp')
+_current_tool_name = ""
+
+
+def set_current_tool(name: str) -> None:
+    """Set the current tool name for large-response file naming."""
+    global _current_tool_name
+    _current_tool_name = name
+
+
+# Control character pattern (everything except printable ASCII + common whitespace)
+_CONTROL_CHAR_RE = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]')
+
+
+def sanitize_input(value: str, max_length: int = 255) -> str:
+    """Sanitize user-provided input for safe use in API calls.
+
+    - Strips leading/trailing whitespace
+    - Removes control characters (keeps newlines, tabs)
+    - Strips excessive quotes
+    - Truncates to *max_length* characters
+
+    Args:
+        value: Raw input string.
+        max_length: Maximum allowed length (default 255).
+
+    Returns:
+        Cleaned string.
+    """
+    if not isinstance(value, str):
+        return str(value)[:max_length]
+
+    value = value.strip()
+    value = _CONTROL_CHAR_RE.sub('', value)
+    # Strip wrapping quotes (single or double) that can confuse FQL filters
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in ('"', "'"):
+        value = value[1:-1]
+    return value[:max_length]
+
+
+def load_credentials(config_path: Optional[str] = None) -> Optional[Dict[str, str]]:
+    """Load CrowdStrike Falcon API credentials.
+
+    Looks for credentials at the provided path or defaults to
+    ~/.config/falcon/credentials.json
+    """
+    if not config_path:
+        config_path = os.path.expanduser("~/.config/falcon/credentials.json")
+
+    try:
+        with open(config_path, 'r') as f:
+            config = json.load(f)
+        return config
+    except Exception as e:
+        print(f"Error loading credentials from {config_path}: {e}", file=sys.stderr)
+        return None
+
+
+def format_text_response(
+    text: str,
+    tool_name: str = "",
+    raw: bool = False,
+) -> Union[str, List[Dict[str, str]]]:
+    """Format a text string as an MCP-compatible response.
+
+    If the response exceeds LARGE_RESPONSE_THRESHOLD, writes full output to a
+    temp file and returns a compact summary with the file path.
+
+    Args:
+        text: Response text to format.
+        tool_name: Tool name for temp file naming.
+        raw: If ``True``, return a plain string (for FastMCP compatibility).
+             If ``False`` (default), return ``[{"type": "text", "text": ...}]``.
+    """
+    if len(text) <= LARGE_RESPONSE_THRESHOLD:
+        return text if raw else [{"type": "text", "text": text}]
+
+    file_path = _write_response_file(text, tool_name or _current_tool_name)
+    summary = _extract_summary(text)
+
+    parts = [
+        summary,
+        "",
+        f"--- RESPONSE TRUNCATED ({len(text):,} chars) ---",
+        f"Full output saved to: {file_path}",
+        "",
+        "To inspect the full data, use bash:",
+        f"  cat '{file_path}' | head -200",
+        f"  python3 -c \"import json; print(open('{file_path}').read()[:5000])\"",
+        f"  grep -i 'keyword' '{file_path}'",
+    ]
+
+    result = "\n".join(parts)
+    return result if raw else [{"type": "text", "text": result}]
+
+
+def _extract_summary(text: str, max_lines: int = 40) -> str:
+    """Extract a useful summary from a large MCP response.
+
+    Keeps header/metadata lines and the first data block, truncates bulk
+    event/behavior JSON that makes up the majority of large responses.
+    """
+    lines = text.split('\n')
+    summary_lines = []
+    data_blocks_seen = 0
+    in_data_block = False
+
+    for line in lines:
+        # Detect start of bulk data sections
+        if any(marker in line for marker in ['```json', '#### Event ', '#### Behavior ']):
+            data_blocks_seen += 1
+            if data_blocks_seen > 1:
+                break
+            # Keep the first data block marker
+            in_data_block = '```json' in line
+
+        summary_lines.append(line)
+
+        # End of first json block
+        if in_data_block and line.strip() == '```' and len(summary_lines) > 1:
+            in_data_block = False
+
+        if len(summary_lines) >= max_lines:
+            break
+
+    return '\n'.join(summary_lines)
+
+
+def _write_response_file(text: str, tool_name: str = "") -> str:
+    """Write a large response to a temp file and return the path."""
+    os.makedirs(MCP_OUTPUT_DIR, exist_ok=True)
+
+    safe_name = tool_name.replace(' ', '_').replace('/', '_') if tool_name else 'response'
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f"{safe_name}_{timestamp}.txt"
+    file_path = os.path.join(MCP_OUTPUT_DIR, filename)
+
+    with open(file_path, 'w') as f:
+        f.write(text)
+
+    _cleanup_old_files(MCP_OUTPUT_DIR, keep=20)
+    return file_path
+
+
+def _cleanup_old_files(directory: str, keep: int = 20) -> None:
+    """Remove oldest files if directory has more than `keep` files."""
+    try:
+        files = sorted(
+            [os.path.join(directory, f) for f in os.listdir(directory)
+             if os.path.isfile(os.path.join(directory, f))],
+            key=os.path.getmtime,
+        )
+        for f in files[:-keep]:
+            os.remove(f)
+    except OSError:
+        pass
+
+
+def format_error_response(error: str) -> List[Dict[str, str]]:
+    """Format an error message as an MCP-compatible response list."""
+    return [{"type": "text", "text": f"Error: {error}"}]
+
+
+# Mapping of composite ID product prefixes to human-readable names
+PRODUCT_PREFIX_MAP = {
+    "ind": "endpoint",
+    "ngsiem": "ngsiem",
+    "fcs": "cloud_security",
+    "ldt": "identity",
+    "thirdparty": "thirdparty",
+}
+
+PRODUCT_DISPLAY_NAMES = {
+    "endpoint": "Endpoint (EDR)",
+    "ngsiem": "NG-SIEM",
+    "cloud_security": "Falcon Cloud Security",
+    "identity": "Identity Protection",
+    "thirdparty": "Third-Party Integration",
+}
+
+# Mapping from user-friendly product filter to FQL product values
+PRODUCT_FQL_MAP = {
+    "endpoint": ["ind"],
+    "ngsiem": ["ngsiem"],
+    "cloud_security": ["fcs"],
+    "identity": ["ldt"],
+    "thirdparty": ["thirdparty"],
+}
+
+
+def extract_detection_id(raw_input: str) -> str:
+    """Extract a composite detection ID from a raw string.
+
+    Accepts:
+      - Full composite ID: CID:product:sub:id
+      - Falcon console URL: https://falcon.../unified-detections/CID:product:sub:id?...
+      - URL with detection_id query param: ...?detection_id=CID:product:sub:id
+    """
+    raw_input = raw_input.strip()
+
+    # If it looks like a URL, parse out the composite ID
+    if raw_input.startswith("http://") or raw_input.startswith("https://"):
+        parsed = urlparse(raw_input)
+
+        # Check query params first (e.g., ?detection_id=...)
+        params = parse_qs(parsed.query)
+        if "detection_id" in params:
+            return unquote(params["detection_id"][0])
+
+        # Extract from path — composite ID is the last path segment
+        # e.g., /unified-detections/CID:ngsiem:CID:alertID
+        path = unquote(parsed.path).rstrip("/")
+        last_segment = path.rsplit("/", 1)[-1] if "/" in path else path
+        # Validate it looks like a composite ID (contains colons with known prefix)
+        if ":" in last_segment:
+            parts = last_segment.split(":")
+            if len(parts) >= 3 and parts[1] in PRODUCT_PREFIX_MAP:
+                return last_segment
+
+    return raw_input
+
+
+def parse_composite_id(composite_id: str) -> Dict[str, str]:
+    """Parse a CrowdStrike composite detection ID to extract product type.
+
+    Composite ID formats:
+      - Endpoint:       cust_id:ind:sub_id:detect_id
+      - NGSIEM:         cust_id:ngsiem:cust_id:indicator_id
+      - Cloud Security: cust_id:fcs:ioa-212:uuid
+      - Identity:       cust_id:ldt:sub_id:detect_id
+      - Third-Party:    cust_id:thirdparty:cust_id:alert_id
+
+    Returns dict with keys: product_prefix, product_type, product_name, parts
+    """
+    parts = composite_id.split(':')
+
+    if len(parts) < 3:
+        return {
+            "product_prefix": "unknown",
+            "product_type": "unknown",
+            "product_name": "Unknown",
+            "parts": parts
+        }
+
+    prefix = parts[1]
+    # Handle fcs sub-types like "fcs" from "cust_id:fcs:ioa-212:uuid"
+    product_type = PRODUCT_PREFIX_MAP.get(prefix, "unknown")
+    product_name = PRODUCT_DISPLAY_NAMES.get(product_type, "Unknown")
+
+    return {
+        "product_prefix": prefix,
+        "product_type": product_type,
+        "product_name": product_name,
+        "parts": parts
+    }
