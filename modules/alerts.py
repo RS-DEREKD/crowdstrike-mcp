@@ -512,40 +512,32 @@ class AlertsModule(BaseModule):
             return {"success": False, "error": f"Query execution error: {str(e)}"}
 
     def _get_behaviors_for_alert(self, alert):
-        """Get endpoint behaviors for an alert using internal Detects client."""
-        if not self._detects:
-            return {"success": False, "error": "Detects enrichment not available"}
+        """Get endpoint context via NGSIEM raw telemetry (replaces deprecated Detects API).
 
-        composite_id = alert.get("composite_id", "")
-        if not composite_id:
-            return {"success": False, "error": "No composite_id in alert data"}
+        The Detects API was decommissioned in March 2026. This method now queries
+        NGSIEM for raw EDR events (ProcessRollup2) around the alert's device.
+        """
+        if not self._ngsiem:
+            return {"success": False, "error": "NGSIEM enrichment not available — cannot enrich endpoint alert"}
+
+        device_id = alert.get("device", {}).get("device_id", "")
+        if not device_id:
+            return {"success": False, "error": "No device_id in alert — cannot query endpoint telemetry"}
+
+        query = f'#event_simpleName=ProcessRollup2 aid="{device_id}" | head(20)'
 
         try:
-            response = self._detects.get_detect_summaries(ids=[composite_id])
-            if response["status_code"] == 200:
-                resources = response.get("body", {}).get("resources", [])
-                if resources:
-                    all_behaviors = []
-                    for detection in resources:
-                        all_behaviors.extend(detection.get("behaviors", []))
-                    return {"success": True, "behaviors": all_behaviors}
+            result = self._execute_ngsiem_query(query, start_time="24h", max_results=20)
+            if not result.get("success"):
+                return {
+                    "success": False,
+                    "error": f"NGSIEM endpoint enrichment failed: {result.get('error', 'Unknown')}",
+                }
 
-            # Fallback: extract detect ID from composite format
-            parts = composite_id.split(":")
-            if len(parts) >= 4 and parts[1] == "ind":
-                detect_id = parts[-1]
-                response = self._detects.get_detect_summaries(ids=[detect_id])
-                if response["status_code"] == 200:
-                    resources = response.get("body", {}).get("resources", [])
-                    if resources:
-                        all_behaviors = []
-                        for detection in resources:
-                            all_behaviors.extend(detection.get("behaviors", []))
-                        return {"success": True, "behaviors": all_behaviors}
-
-            return {"success": False, "error": f"Could not retrieve behaviors for alert {composite_id}"}
+            events = result.get("events", [])
+            return {"success": True, "behaviors": events}
         except Exception as e:
-            return {"success": False, "error": f"Error getting behaviors: {str(e)}"}
+            return {"success": False, "error": f"NGSIEM endpoint enrichment error: {str(e)}"}
 
     def _analyze_alert(self, detection_id, max_events=10):
         """Analyze an alert with type-specific enrichment routing."""
@@ -592,22 +584,16 @@ class AlertsModule(BaseModule):
 
         elif product_type == "endpoint":
             result["enrichment_type"] = "endpoint_behaviors"
-            if self._detects:
-                try:
-                    behaviors_result = self._get_behaviors_for_alert(alert)
-                    if behaviors_result.get("success"):
-                        result["behaviors"] = behaviors_result.get("behaviors", [])
-                    else:
-                        result["enrichment_note"] = (
-                            f"Endpoint behavior retrieval failed: {behaviors_result.get('error', 'Unknown')}"
-                        )
-                except Exception as e:
-                    result["enrichment_note"] = f"Endpoint enrichment error: {str(e)}"
-            else:
-                result["enrichment_note"] = (
-                    "Endpoint behavior enrichment available but Detects API handler not initialized. "
-                    "Ensure falcon_client_id has Detects Read scope."
-                )
+            try:
+                behaviors_result = self._get_behaviors_for_alert(alert)
+                if behaviors_result.get("success"):
+                    result["behaviors"] = behaviors_result.get("behaviors", [])
+                else:
+                    result["enrichment_note"] = (
+                        f"Endpoint behavior retrieval failed: {behaviors_result.get('error', 'Unknown')}"
+                    )
+            except Exception as e:
+                result["enrichment_note"] = f"Endpoint enrichment error: {str(e)}"
 
         elif product_type == "identity":
             result["enrichment_type"] = "identity_metadata_only"
