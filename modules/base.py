@@ -17,6 +17,8 @@ if TYPE_CHECKING:
     from client import FalconClient
     from mcp.server.fastmcp import FastMCP
 
+_VALID_TIERS = {"read", "write"}
+
 
 class BaseModule(ABC):
     """Abstract base class for CrowdStrike MCP modules."""
@@ -25,6 +27,7 @@ class BaseModule(ABC):
         self.client = client
         self.tools: list[str] = []
         self.resources: list[str] = []
+        self.allow_writes: bool = False
 
     @abstractmethod
     def register_tools(self, server: FastMCP) -> None:
@@ -46,6 +49,7 @@ class BaseModule(ABC):
         method: Callable,
         name: str,
         description: str | None = None,
+        tier: str = "read",
     ) -> None:
         """Register a tool function with the server and track it.
 
@@ -54,7 +58,19 @@ class BaseModule(ABC):
             method: The async or sync callable to register.
             name: Tool name (e.g. ``"ngsiem_query"``).
             description: Optional tool description override.
+            tier: Permission tier — ``"read"`` (default) or ``"write"``.
+                  Write tools are skipped when ``allow_writes`` is False.
+
+        Raises:
+            ValueError: If ``tier`` is not a valid value.
         """
+        if tier not in _VALID_TIERS:
+            raise ValueError(
+                f"Invalid tier {tier!r} for tool {name!r}. Must be one of: {sorted(_VALID_TIERS)}"
+            )
+        if tier == "write" and not self.allow_writes:
+            self._log(f"Skipping write tool '{name}' (allow_writes=False)")
+            return
         kwargs = {"name": name}
         if description:
             kwargs["description"] = description
