@@ -1,0 +1,8 @@
+{
+  "_comment": "Full access: all tools auto-allowed. Requires --allow-writes on the server to register write tools.",
+  "permissions": {
+    "allow": [
+      "mcp__crowdstrike__*"
+    ]
+  }
+}

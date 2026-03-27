@@ -1,0 +1,34 @@
+{
+  "_comment": "Standard SOC analyst: read tools auto-allowed, alert triage auto-allowed, containment and rule changes prompt.",
+  "permissions": {
+    "allow": [
+      "mcp__crowdstrike__get_alerts",
+      "mcp__crowdstrike__alert_analysis",
+      "mcp__crowdstrike__ngsiem_alert_analysis",
+      "mcp__crowdstrike__ngsiem_query",
+      "mcp__crowdstrike__host_lookup",
+      "mcp__crowdstrike__host_login_history",
+      "mcp__crowdstrike__host_network_history",
+      "mcp__crowdstrike__correlation_list_rules",
+      "mcp__crowdstrike__correlation_get_rule",
+      "mcp__crowdstrike__correlation_export_rule",
+      "mcp__crowdstrike__case_query",
+      "mcp__crowdstrike__case_get",
+      "mcp__crowdstrike__case_get_fields",
+      "mcp__crowdstrike__cloud_list_accounts",
+      "mcp__crowdstrike__cloud_policy_settings",
+      "mcp__crowdstrike__cloud_get_risks",
+      "mcp__crowdstrike__cloud_get_iom_detections",
+      "mcp__crowdstrike__cloud_query_assets",
+      "mcp__crowdstrike__cloud_compliance_by_account",
+      "mcp__crowdstrike__update_alert_status",
+      "mcp__crowdstrike__case_create",
+      "mcp__crowdstrike__case_update",
+      "mcp__crowdstrike__case_add_alert_evidence",
+      "mcp__crowdstrike__case_add_event_evidence",
+      "mcp__crowdstrike__case_add_tags",
+      "mcp__crowdstrike__case_delete_tags",
+      "mcp__crowdstrike__case_upload_file"
+    ]
+  }
+}

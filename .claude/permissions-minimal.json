@@ -1,0 +1,9 @@
+{
+  "_comment": "Minimal: query-only analyst. Only NGSIEM queries and host lookups auto-allowed.",
+  "permissions": {
+    "allow": [
+      "mcp__crowdstrike__ngsiem_query",
+      "mcp__crowdstrike__host_lookup"
+    ]
+  }
+}
