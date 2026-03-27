@@ -219,8 +219,21 @@ class TestContainmentAuditLog:
 class TestToolRegistration:
     """Verify tools register correctly."""
 
-    def test_registers_both_tools(self, response_module):
+    def test_registers_both_tools_when_writes_enabled(self, mock_client):
+        """Write tools register when allow_writes=True."""
+        with patch("modules.response.Hosts") as MockHosts:
+            MockHosts.return_value = MagicMock()
+            from modules.response import ResponseModule
+            module = ResponseModule(mock_client)
+            module.allow_writes = True
+        server = MagicMock()
+        module.register_tools(server)
+        assert "host_contain" in module.tools
+        assert "host_lift_containment" in module.tools
+
+    def test_skips_both_tools_when_writes_disabled(self, response_module):
+        """Write tools are skipped when allow_writes=False (default)."""
         server = MagicMock()
         response_module.register_tools(server)
-        assert "host_contain" in response_module.tools
-        assert "host_lift_containment" in response_module.tools
+        assert "host_contain" not in response_module.tools
+        assert "host_lift_containment" not in response_module.tools

@@ -75,6 +75,7 @@ class ResponseModule(BaseModule):
                 "with device details. Call again with confirm=True to execute. "
                 "Respects do-not-contain exclusion list."
             ),
+            tier="write",
         )
         self._add_tool(
             server, self.host_lift_containment, name="host_lift_containment",
@@ -82,6 +83,7 @@ class ResponseModule(BaseModule):
                 "TIER 2: Lift network isolation from a contained host. "
                 "First call returns a preview. Call again with confirm=True to execute."
             ),
+            tier="write",
         )
 
     # ------------------------------------------------------------------

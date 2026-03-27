@@ -102,6 +102,7 @@ class AlertsModule(BaseModule):
                 "Update CrowdStrike alert status after triage/investigation. "
                 "Supports status changes, comments for audit trail, and tags."
             ),
+            tier="write",
         )
 
     # ------------------------------------------------------------------

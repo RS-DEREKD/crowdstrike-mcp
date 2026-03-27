@@ -215,7 +215,21 @@ class TestVendorValidation:
 
 
 class TestToolRegistration:
-    def test_registers_import_tool(self, correlation_module):
+    def test_registers_import_tool(self, mock_client):
+        """Write tools register when allow_writes=True."""
+        with patch("modules.correlation.CorrelationRules") as MockCR:
+            MockCR.return_value = MagicMock()
+            from modules.correlation import CorrelationModule
+            module = CorrelationModule(mock_client)
+            module.allow_writes = True
+        server = MagicMock()
+        module.register_tools(server)
+        assert "correlation_import_to_iac" in module.tools
+        assert "correlation_update_rule" in module.tools
+
+    def test_skips_import_tool_when_writes_disabled(self, correlation_module):
+        """Write tools are skipped when allow_writes=False (default)."""
         server = MagicMock()
         correlation_module.register_tools(server)
-        assert "correlation_import_to_iac" in correlation_module.tools
+        assert "correlation_import_to_iac" not in correlation_module.tools
+        assert "correlation_update_rule" not in correlation_module.tools

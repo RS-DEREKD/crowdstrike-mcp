@@ -92,6 +92,7 @@ class CorrelationModule(BaseModule):
         self._add_tool(
             server, self.correlation_update_rule, name="correlation_update_rule",
             description="Enable or disable a correlation rule with an audit comment.",
+            tier="write",
         )
         self._add_tool(
             server, self.correlation_export_rule, name="correlation_export_rule",
@@ -103,6 +104,7 @@ class CorrelationModule(BaseModule):
                 "Export a console-created correlation rule to an IaC YAML template "
                 "in the detections repo. Use dry_run=True to preview without writing."
             ),
+            tier="write",
         )
 
     # ------------------------------------------------------------------

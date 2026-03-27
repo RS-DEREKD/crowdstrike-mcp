@@ -68,6 +68,7 @@ class CaseManagementModule(BaseModule):
                 "Create a new NG-SIEM Case with name, description, severity, "
                 "optional assignee, tags, and initial alert/event evidence."
             ),
+            tier="write",
         )
         self._add_tool(
             server, self.case_update, name="case_update",
@@ -75,26 +76,32 @@ class CaseManagementModule(BaseModule):
                 "Update case fields: status, severity, assignee, name, description. "
                 "Handles optimistic concurrency automatically."
             ),
+            tier="write",
         )
         self._add_tool(
             server, self.case_add_alert_evidence, name="case_add_alert_evidence",
             description="Attach CrowdStrike alert composite IDs as evidence to an existing case.",
+            tier="write",
         )
         self._add_tool(
             server, self.case_add_event_evidence, name="case_add_event_evidence",
             description="Attach NGSIEM event IDs as evidence to an existing case.",
+            tier="write",
         )
         self._add_tool(
             server, self.case_add_tags, name="case_add_tags",
             description="Add tags to an existing case for categorization and filtering.",
+            tier="write",
         )
         self._add_tool(
             server, self.case_delete_tags, name="case_delete_tags",
             description="Remove tags from an existing case.",
+            tier="write",
         )
         self._add_tool(
             server, self.case_upload_file, name="case_upload_file",
             description="Upload a file attachment to an existing case.",
+            tier="write",
         )
         self._add_tool(
             server, self.case_get_fields, name="case_get_fields",
