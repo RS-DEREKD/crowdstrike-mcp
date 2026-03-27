@@ -177,12 +177,6 @@ Each alert analysis routes to type-specific enrichment:
 - **Endpoint alerts** — fetches EDR behaviors with process trees and MITRE techniques
 - **Cloud/Identity/Third-party** — extracts metadata from alert payload
 
-### Endpoint — `modules/endpoint.py`
-
-| Tool | Description |
-|------|-------------|
-| `endpoint_get_behaviors` | EDR behaviors: process trees, command lines, MITRE ATT&CK techniques |
-
 ### Hosts — `modules/hosts.py`
 
 | Tool | Description |
@@ -303,7 +297,113 @@ python server.py --modules cloudsecurity,cloudregistration
 python server.py --modules ngsiem,correlation
 ```
 
-**Available module names:** `alerts`, `cloudsecurity`, `cloudregistration`, `correlation`, `endpoint`, `hosts`, `ngsiem`
+**Available module names:** `alerts`, `casemanagement`, `cloudsecurity`, `cloudregistration`, `correlation`, `hosts`, `ngsiem`, `response`
+
+---
+
+## Permissions
+
+The server uses a two-layer permission model: **server-side visibility** controls which tools exist, and **client-side presets** control which tools require user approval.
+
+### Server-Side: `--allow-writes`
+
+By default, the server runs in **read-only mode**. Write tools (alert updates, containment, rule changes) are not registered and don't appear in the tool list.
+
+To enable write tools:
+
+```bash
+python server.py --allow-writes
+```
+
+Or via environment variable:
+
+```bash
+FALCON_MCP_ALLOW_WRITES=true python server.py
+```
+
+#### .mcp.json examples
+
+**Read-only (default, recommended):**
+```json
+{
+  "mcpServers": {
+    "crowdstrike": {
+      "command": ".venv/bin/python3",
+      "args": ["server.py"]
+    }
+  }
+}
+```
+
+**With write tools enabled:**
+```json
+{
+  "mcpServers": {
+    "crowdstrike": {
+      "command": ".venv/bin/python3",
+      "args": ["server.py", "--allow-writes"]
+    }
+  }
+}
+```
+
+**Minimal — only NGSIEM and host lookups:**
+```json
+{
+  "mcpServers": {
+    "crowdstrike": {
+      "command": ".venv/bin/python3",
+      "args": ["server.py", "--modules", "ngsiem,hosts"]
+    }
+  }
+}
+```
+
+### Client-Side: Permission Presets
+
+Four Claude Code permission presets are included in `.claude/`:
+
+| Preset | Use Case | Auto-allowed | Prompts For |
+|--------|----------|-------------|-------------|
+| `permissions-minimal.json` | Query-only analyst | ngsiem_query, host_lookup | Everything else |
+| `permissions-readonly.json` | Read-only (default) | All read tools | All write tools |
+| `permissions-standard.json` | SOC triage analyst | All read + alert/case updates | Containment, rule changes |
+| `permissions-full.json` | Admin / full trust | All tools | Nothing |
+
+To switch presets:
+
+```bash
+cp .claude/permissions-standard.json .claude/settings.json
+```
+
+### How the Layers Compose
+
+| Control | What it does |
+|---------|-------------|
+| `--modules` | Which modules load at all |
+| `--allow-writes` | Whether write tools register within loaded modules |
+| `.claude/settings.json` | Whether Claude Code prompts before calling a tool |
+
+All three are independent. A tool must pass all applicable gates to execute without prompting.
+
+### Write Tools
+
+These tools require `--allow-writes` to be visible:
+
+| Tool | Module | What it does |
+|------|--------|-------------|
+| `update_alert_status` | alerts | Change alert status, add comments/tags |
+| `correlation_update_rule` | correlation | Enable/disable detection rules |
+| `correlation_import_to_iac` | correlation | Export rules to IaC YAML |
+| `host_contain` | response | Network-isolate a host |
+| `host_lift_containment` | response | Lift network isolation |
+| `case_create` | case_management | Create a new case |
+| `case_update` | case_management | Update case fields |
+| `case_add_alert_evidence` | case_management | Attach alerts to a case |
+| `case_add_event_evidence` | case_management | Attach events to a case |
+| `case_add_tags` | case_management | Add tags to a case |
+| `case_delete_tags` | case_management | Remove tags from a case |
+| `case_upload_file` | case_management | Upload file to a case |
 
 ---
 
