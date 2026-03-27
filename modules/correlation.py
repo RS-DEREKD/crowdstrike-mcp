@@ -11,7 +11,11 @@ Tools:
 from __future__ import annotations
 
 import json
+import os
+import re
 from typing import Annotated, Optional, TYPE_CHECKING
+
+import yaml
 
 from modules.base import BaseModule
 from common.errors import format_api_error
@@ -31,6 +35,8 @@ try:
     HARNESS_AVAILABLE = True
 except ImportError:
     HARNESS_AVAILABLE = False
+
+VALID_VENDORS = {"aws", "microsoft", "crowdstrike", "google", "github", "cato", "generic", "knowbe4"}
 
 
 class CorrelationModule(BaseModule):
@@ -53,6 +59,15 @@ class CorrelationModule(BaseModule):
                 "Neither falconpy.CorrelationRules nor falconpy.APIHarnessV2 available. "
                 "Ensure crowdstrike-falconpy >= 1.6.0 is installed."
             )
+
+        # Path to crowdstrike-detections repo for IaC file writes
+        self._detections_repo_path = os.environ.get(
+            "DETECTIONS_REPO_PATH",
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "crowdstrike-detections"),
+        )
+        if not os.path.isdir(self._detections_repo_path):
+            self._detections_repo_path = None
+            self._log("DETECTIONS_REPO_PATH not found — correlation_import_to_iac will use dry-run mode")
 
     def _init_harness(self):
         self.falcon = APIHarnessV2(auth_object=self.client.auth_object)
@@ -81,6 +96,13 @@ class CorrelationModule(BaseModule):
         self._add_tool(
             server, self.correlation_export_rule, name="correlation_export_rule",
             description="Export a correlation rule in structured format for review.",
+        )
+        self._add_tool(
+            server, self.correlation_import_to_iac, name="correlation_import_to_iac",
+            description=(
+                "Export a console-created correlation rule to an IaC YAML template "
+                "in the detections repo. Use dry_run=True to preview without writing."
+            ),
         )
 
     # ------------------------------------------------------------------
@@ -359,3 +381,182 @@ class CorrelationModule(BaseModule):
         }
 
         return {"success": True, "export": export}
+
+    # ------------------------------------------------------------------
+    # IaC import tool
+    # ------------------------------------------------------------------
+
+    async def correlation_import_to_iac(
+        self,
+        rule_id: Annotated[str, "Correlation rule ID to import"],
+        vendor: Annotated[str, "Vendor directory (aws, microsoft, crowdstrike, google, github, cato, generic, knowbe4)"],
+        resource_id_override: Annotated[Optional[str], "Override the auto-generated resource_id"] = None,
+        dry_run: Annotated[bool, "If True, return YAML without writing to disk"] = False,
+    ) -> str:
+        """Export a correlation rule to an IaC YAML template."""
+        # Validate vendor
+        if vendor.lower() not in VALID_VENDORS:
+            return format_text_response(
+                f"Invalid vendor '{vendor}'. Must be one of: {', '.join(sorted(VALID_VENDORS))}",
+                raw=True,
+            )
+        vendor = vendor.lower()
+
+        # Fetch rule
+        result = self._get_rules([rule_id])
+        if not result.get("success"):
+            return format_text_response(f"Failed to fetch rule: {result.get('error')}", raw=True)
+
+        rules = result.get("rules", [])
+        if not rules:
+            return format_text_response(f"Rule not found: {rule_id}", raw=True)
+
+        rule = rules[0]
+
+        # Convert to template
+        template = self._rule_to_template(rule, vendor, resource_id_override)
+        yaml_str = self._template_to_yaml(template)
+
+        # Dry-run or path not available: return YAML as text
+        if dry_run or not self._detections_repo_path:
+            lines = []
+            if not dry_run and not self._detections_repo_path:
+                lines.append("NOTE: Detections repo path not configured — falling back to dry-run mode.")
+                lines.append(f"Set DETECTIONS_REPO_PATH env var or place the repo at the expected location.")
+                lines.append("")
+            lines.append(f"## IaC Template for: {rule.get('name', 'Unknown')}")
+            lines.append(f"Resource ID: `{template['resource_id']}`")
+            lines.append(f"Target path: `resources/detections/{vendor}/{template['resource_id']}.yaml`")
+            lines.append("")
+            lines.append("```yaml")
+            lines.append(yaml_str)
+            lines.append("```")
+            return format_text_response("\n".join(lines), raw=True)
+
+        # Write to file
+        resource_id = template["resource_id"]
+        target_dir = os.path.join(self._detections_repo_path, "resources", "detections", vendor)
+        target_path = os.path.join(target_dir, f"{resource_id}.yaml")
+
+        if os.path.exists(target_path):
+            return format_text_response(
+                f"File already exists: `{target_path}`\n\n"
+                f"This rule may already be under IaC management. "
+                f"Use a different resource_id_override or check the existing template.",
+                raw=True,
+            )
+
+        if not os.path.isdir(target_dir):
+            return format_text_response(
+                f"Vendor directory does not exist: `{target_dir}`\n"
+                f"Create it first or use a valid vendor.",
+                raw=True,
+            )
+
+        with open(target_path, "w") as f:
+            f.write(yaml_str)
+
+        lines = [
+            f"Template written to: `{target_path}`",
+            "",
+            f"Resource ID: `{resource_id}`",
+            f"Name: {template['name']}",
+            f"Severity: {template['severity']}",
+            f"Status: {template['status']}",
+            "",
+            "Next steps:",
+            f"1. Review and tune the CQL in `{target_path}`",
+            "2. `python scripts/resource_deploy.py validate-query --template " + target_path + "`",
+            "3. `python scripts/resource_deploy.py plan`",
+            "4. `python scripts/resource_deploy.py apply`",
+        ]
+        return format_text_response("\n".join(lines), raw=True)
+
+    # ------------------------------------------------------------------
+    # IaC template conversion helpers
+    # ------------------------------------------------------------------
+
+    def _rule_to_template(self, rule: dict, vendor: str, resource_id_override: str = None) -> dict:
+        """Convert a CrowdStrike API rule to IaC YAML template dict."""
+        resource_id = self._generate_resource_id(rule.get("name", ""), vendor, resource_id_override)
+
+        search = rule.get("search", {})
+        trigger = rule.get("trigger", {})
+        operation = rule.get("operation", {})
+
+        # Map lookback from search.lookback_window or search.start
+        lookback = search.get("lookback_window") or search.get("start") or "1h0m"
+
+        # Map trigger mode / outcome
+        trigger_mode = trigger.get("trigger_mode") or "summary"
+        outcome = trigger.get("outcome") or "detection"
+
+        template = {
+            "resource_id": resource_id,
+            "name": rule.get("name", ""),
+            "description": rule.get("description", ""),
+            "severity": rule.get("severity", 50),
+            "status": "active" if rule.get("enabled", False) else "disabled",
+            "search": {
+                "filter": search.get("filter", ""),
+                "lookback": lookback,
+                "trigger_mode": trigger_mode,
+                "outcome": outcome,
+                "use_ingest_time": True,
+            },
+            "operation": {
+                "schedule": {
+                    "definition": operation.get("schedule", {}).get("definition", "@every 1h0m"),
+                },
+            },
+        }
+
+        mitre = rule.get("mitre_attack_ids", [])
+        if mitre:
+            template["mitre_attack"] = mitre
+
+        return template
+
+    @staticmethod
+    def _generate_resource_id(name: str, vendor: str, override: str = None) -> str:
+        """Generate a stable resource_id from a rule name.
+
+        Convention: vendor_-_source_-_sanitized_name (matching existing templates).
+        """
+        if override:
+            return override
+
+        # Lowercase, remove special characters except underscores, hyphens, spaces
+        sanitized = name.lower()
+        sanitized = re.sub(r'[^a-z0-9\s_-]', '', sanitized)
+        # Replace spaces with underscores (preserving hyphens as-is)
+        sanitized = re.sub(r'\s+', '_', sanitized)
+        # Collapse multiple underscores
+        sanitized = re.sub(r'_+', '_', sanitized)
+        sanitized = sanitized.strip('_')
+
+        # The convention uses " - " in names which becomes "_-_" in resource_id
+        # e.g. "AWS - CloudTrail - Suspicious IAM Activity" -> "aws_-_cloudtrail_-_suspicious_iam_activity"
+        return sanitized
+
+    @staticmethod
+    def _template_to_yaml(template: dict) -> str:
+        """Serialize a template dict to YAML string matching the project's style."""
+        # Use block style for multi-line strings (filter)
+        class BlockDumper(yaml.SafeDumper):
+            pass
+
+        def str_representer(dumper, data):
+            if '\n' in data:
+                return dumper.represent_scalar('tag:yaml.org,2002:str', data, style='|')
+            return dumper.represent_scalar('tag:yaml.org,2002:str', data)
+
+        BlockDumper.add_representer(str, str_representer)
+
+        return yaml.dump(
+            template,
+            Dumper=BlockDumper,
+            default_flow_style=False,
+            sort_keys=False,
+            allow_unicode=True,
+        )
