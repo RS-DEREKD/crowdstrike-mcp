@@ -4,6 +4,20 @@
     "allow": [
       "mcp__crowdstrike__ngsiem_query",
       "mcp__crowdstrike__host_lookup"
+    ],
+    "ask": [
+      "mcp__crowdstrike__update_alert_status",
+      "mcp__crowdstrike__correlation_update_rule",
+      "mcp__crowdstrike__correlation_import_to_iac",
+      "mcp__crowdstrike__host_contain",
+      "mcp__crowdstrike__host_lift_containment",
+      "mcp__crowdstrike__case_create",
+      "mcp__crowdstrike__case_update",
+      "mcp__crowdstrike__case_add_alert_evidence",
+      "mcp__crowdstrike__case_add_event_evidence",
+      "mcp__crowdstrike__case_add_tags",
+      "mcp__crowdstrike__case_delete_tags",
+      "mcp__crowdstrike__case_upload_file"
     ]
   }
 }
