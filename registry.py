@@ -24,9 +24,8 @@ def discover_module_classes() -> list[type[BaseModule]]:
     Returns:
         List of module classes (not instances), sorted by name.
     """
-    from modules.base import BaseModule as _Base
-
     import modules as _pkg
+    from modules.base import BaseModule as _Base
 
     classes: list[type[_Base]] = []
 
@@ -43,12 +42,7 @@ def discover_module_classes() -> list[type[BaseModule]]:
 
         for attr_name in dir(mod):
             attr = getattr(mod, attr_name)
-            if (
-                isinstance(attr, type)
-                and issubclass(attr, _Base)
-                and attr is not _Base
-                and attr_name.endswith("Module")
-            ):
+            if isinstance(attr, type) and issubclass(attr, _Base) and attr is not _Base and attr_name.endswith("Module"):
                 classes.append(attr)
 
     return sorted(classes, key=lambda c: c.__name__)
@@ -97,7 +91,4 @@ def get_module_names() -> list[str]:
 
     Useful for ``--modules`` CLI help text.
     """
-    return [
-        cls.__name__.replace("Module", "").lower()
-        for cls in discover_module_classes()
-    ]
+    return [cls.__name__.replace("Module", "").lower() for cls in discover_module_classes()]

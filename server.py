@@ -39,8 +39,8 @@ load_dotenv()
 
 from mcp.server.fastmcp import FastMCP
 
-from client import FalconClient, SERVER_VERSION
-from registry import get_available_modules, get_module_names
+from client import FalconClient
+from registry import get_available_modules
 
 
 class FalconMCPServer:
@@ -78,7 +78,9 @@ class FalconMCPServer:
 
         # Discover and register modules
         self._modules = get_available_modules(
-            self.client, enabled=modules_filter, allow_writes=allow_writes,
+            self.client,
+            enabled=modules_filter,
+            allow_writes=allow_writes,
         )
 
         for mod in self._modules:
@@ -88,10 +90,7 @@ class FalconMCPServer:
         tool_count = sum(len(m.tools) for m in self._modules)
         resource_count = sum(len(m.resources) for m in self._modules)
         write_mode = "enabled" if allow_writes else "read-only"
-        self._log(
-            f"Registered {tool_count} tools and {resource_count} resources "
-            f"from {len(self._modules)} modules ({write_mode})"
-        )
+        self._log(f"Registered {tool_count} tools and {resource_count} resources from {len(self._modules)} modules ({write_mode})")
 
     def run(self):
         """Start the server with the configured transport."""
@@ -120,6 +119,7 @@ class FalconMCPServer:
         # Wrap with API key middleware if configured
         if self.api_key:
             from common.auth_middleware import auth_middleware
+
             app = auth_middleware(app, self.api_key)
             self._log(f"API key authentication enabled for {transport_type}")
 

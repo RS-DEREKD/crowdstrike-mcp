@@ -1,13 +1,12 @@
 """Tests for correlation_import_to_iac tool — rule-to-YAML conversion."""
 
-import sys
-import os
 import asyncio
-import tempfile
-import yaml
+import os
+import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
+import yaml
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -49,6 +48,7 @@ def correlation_module(mock_client):
         mock_cr = MagicMock()
         MockCR.return_value = mock_cr
         from modules.correlation import CorrelationModule
+
         module = CorrelationModule(mock_client)
         module.falcon = mock_cr
         return module
@@ -74,9 +74,7 @@ class TestResourceIdGeneration:
         assert result == "rule_with_special_chars"
 
     def test_uses_override_when_provided(self, correlation_module):
-        result = correlation_module._generate_resource_id(
-            "AWS - Some Rule", "aws", override="my_custom_id"
-        )
+        result = correlation_module._generate_resource_id("AWS - Some Rule", "aws", override="my_custom_id")
         assert result == "my_custom_id"
 
 
@@ -155,7 +153,7 @@ class TestFileWrite:
         (tmp_path / "resources" / "detections" / "aws").mkdir(parents=True)
 
         _mock_get_rules(correlation_module.falcon, MOCK_RULE)
-        result = asyncio.get_event_loop().run_until_complete(
+        asyncio.get_event_loop().run_until_complete(
             correlation_module.correlation_import_to_iac(
                 rule_id="rule-uuid-123",
                 vendor="aws",
@@ -220,6 +218,7 @@ class TestToolRegistration:
         with patch("modules.correlation.CorrelationRules") as MockCR:
             MockCR.return_value = MagicMock()
             from modules.correlation import CorrelationModule
+
             module = CorrelationModule(mock_client)
             module.allow_writes = True
         server = MagicMock()

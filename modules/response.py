@@ -17,10 +17,10 @@ import fnmatch
 import json
 import os
 from datetime import datetime, timezone
-from typing import Annotated, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Annotated, Optional
 
-from modules.base import BaseModule
 from common.errors import format_api_error
+from modules.base import BaseModule
 from utils import format_text_response
 
 if TYPE_CHECKING:
@@ -28,6 +28,7 @@ if TYPE_CHECKING:
 
 try:
     from falconpy import Hosts
+
     HOSTS_AVAILABLE = True
 except ImportError:
     HOSTS_AVAILABLE = False
@@ -52,16 +53,11 @@ class ResponseModule(BaseModule):
     def __init__(self, client):
         super().__init__(client)
         if not HOSTS_AVAILABLE:
-            raise ImportError(
-                "falconpy.Hosts not available. "
-                "Ensure crowdstrike-falconpy >= 1.6.0 is installed."
-            )
+            raise ImportError("falconpy.Hosts not available. Ensure crowdstrike-falconpy >= 1.6.0 is installed.")
         self.hosts = Hosts(auth_object=self.client.auth_object)
 
         # Audit log path
-        self._audit_log_path = os.path.expanduser(
-            "~/.config/falcon/containment_audit.log"
-        )
+        self._audit_log_path = os.path.expanduser("~/.config/falcon/containment_audit.log")
 
         # Load exclusion config (falls back to defaults)
         self._exclusions = self._load_exclusions()
@@ -69,7 +65,9 @@ class ResponseModule(BaseModule):
 
     def register_tools(self, server: FastMCP) -> None:
         self._add_tool(
-            server, self.host_contain, name="host_contain",
+            server,
+            self.host_contain,
+            name="host_contain",
             description=(
                 "TIER 2: Network-isolate a host. First call returns a preview "
                 "with device details. Call again with confirm=True to execute. "
@@ -78,11 +76,10 @@ class ResponseModule(BaseModule):
             tier="write",
         )
         self._add_tool(
-            server, self.host_lift_containment, name="host_lift_containment",
-            description=(
-                "TIER 2: Lift network isolation from a contained host. "
-                "First call returns a preview. Call again with confirm=True to execute."
-            ),
+            server,
+            self.host_lift_containment,
+            name="host_lift_containment",
+            description=("TIER 2: Lift network isolation from a contained host. First call returns a preview. Call again with confirm=True to execute."),
             tier="write",
         )
 
@@ -102,14 +99,16 @@ class ResponseModule(BaseModule):
         device = self._get_device(device_id)
         if not device:
             return format_text_response(
-                f"Device not found: {device_id}. Verify the device_id via host_lookup.", raw=True,
+                f"Device not found: {device_id}. Verify the device_id via host_lookup.",
+                raw=True,
             )
 
         # Step 2: Check current state
         containment_status = device.get("containment_status", "normal")
         if containment_status == "contained":
             return format_text_response(
-                f"Host {device.get('hostname', device_id)} is already contained. No action taken.", raw=True,
+                f"Host {device.get('hostname', device_id)} is already contained. No action taken.",
+                raw=True,
             )
 
         # Step 3: Check exclusions (even on preview, to fail fast)
@@ -142,15 +141,15 @@ class ResponseModule(BaseModule):
         device = self._get_device(device_id)
         if not device:
             return format_text_response(
-                f"Device not found: {device_id}. Verify the device_id via host_lookup.", raw=True,
+                f"Device not found: {device_id}. Verify the device_id via host_lookup.",
+                raw=True,
             )
 
         # Step 2: Check current state
         containment_status = device.get("containment_status", "normal")
         if containment_status != "contained":
             return format_text_response(
-                f"Host {device.get('hostname', device_id)} is not contained "
-                f"(status: {containment_status}). No action taken.",
+                f"Host {device.get('hostname', device_id)} is not contained (status: {containment_status}). No action taken.",
                 raw=True,
             )
 
@@ -255,17 +254,12 @@ class ResponseModule(BaseModule):
         if case_id:
             lines.append(f"Case: {case_id}")
         lines.append("")
-        lines.append(
-            "This will restore full network access to the host. "
-            "Ensure the threat has been remediated before lifting containment."
-        )
+        lines.append("This will restore full network access to the host. Ensure the threat has been remediated before lifting containment.")
         lines.append("")
         lines.append("To proceed, call host_lift_containment again with confirm=True.")
         return "\n".join(lines)
 
-    def _execute_containment(
-        self, device: dict, action_name: str, reason: str, case_id: Optional[str]
-    ) -> str:
+    def _execute_containment(self, device: dict, action_name: str, reason: str, case_id: Optional[str]) -> str:
         """Execute a containment action (contain or lift_containment)."""
         device_id = device.get("device_id", "")
         hostname = device.get("hostname", "Unknown")

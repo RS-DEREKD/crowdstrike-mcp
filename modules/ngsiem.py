@@ -7,16 +7,14 @@ Tools:
 
 from __future__ import annotations
 
-import json
 import time
 from datetime import datetime
-from typing import Annotated, TYPE_CHECKING
+from typing import TYPE_CHECKING, Annotated
 
 from falconpy import NGSIEM
 
 from modules.base import BaseModule
-from common.errors import format_api_error
-from utils import format_text_response, sanitize_input
+from utils import format_text_response
 
 if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
@@ -38,7 +36,8 @@ class NGSIEMModule(BaseModule):
             return CQL_SYNTAX
 
         server.resource(
-            "falcon://cql/syntax", name="CQL Query Syntax Reference",
+            "falcon://cql/syntax",
+            name="CQL Query Syntax Reference",
             description="Documentation: CQL query language syntax for NGSIEM",
         )(_cql_syntax)
         self.resources.append("falcon://cql/syntax")
@@ -48,10 +47,7 @@ class NGSIEMModule(BaseModule):
             server,
             self.ngsiem_query,
             name="ngsiem_query",
-            description=(
-                "Execute NGSIEM/CQL query across all CrowdStrike logs using "
-                "search-all repository"
-            ),
+            description=("Execute NGSIEM/CQL query across all CrowdStrike logs using search-all repository"),
         )
 
     async def ngsiem_query(
@@ -77,16 +73,13 @@ class NGSIEMModule(BaseModule):
                 f"Events Returned: {result['events_returned']}",
             ]
             if result.get("results_truncated"):
-                lines.append(
-                    f"Results limited to {max_results} events "
-                    f"out of {result['events_matched']} total matches"
-                )
+                lines.append(f"Results limited to {max_results} events out of {result['events_matched']} total matches")
             lines.append("")
 
             if events:
                 lines.append("Results:")
                 for i, event in enumerate(events[:10]):
-                    lines.append(f"\n#{i+1}:")
+                    lines.append(f"\n#{i + 1}:")
                     for key, value in event.items():
                         str_value = str(value)
                         if len(str_value) > 200:
@@ -114,7 +107,10 @@ class NGSIEMModule(BaseModule):
     # ------------------------------------------------------------------
 
     def _execute_query(
-        self, query: str, start_time: str = "1d", max_results: int = 100,
+        self,
+        query: str,
+        start_time: str = "1d",
+        max_results: int = 100,
     ) -> dict:
         """Execute a complete NGSIEM query. Returns result dict."""
         # Add MCP identifier comment for audit/tracking

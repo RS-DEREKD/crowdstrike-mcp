@@ -1,11 +1,10 @@
 """Tests for ResponseModule — host containment with safety model."""
 
-import sys
-import os
-import json
 import asyncio
-import tempfile
-from unittest.mock import MagicMock, patch, mock_open
+import json
+import os
+import sys
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -42,6 +41,7 @@ def response_module(mock_client):
         mock_hosts = MagicMock()
         MockHosts.return_value = mock_hosts
         from modules.response import ResponseModule
+
         module = ResponseModule(mock_client)
         module.hosts = mock_hosts
         return module
@@ -128,8 +128,7 @@ class TestHostContainExecution:
         assert "contained" in result.lower() or "success" in result.lower()
         response_module.hosts.perform_action.assert_called_once()
         call_kwargs = response_module.hosts.perform_action.call_args
-        assert call_kwargs[1]["action_name"] == "contain" or \
-               call_kwargs.kwargs.get("action_name") == "contain"
+        assert call_kwargs[1]["action_name"] == "contain" or call_kwargs.kwargs.get("action_name") == "contain"
 
     def test_contain_api_failure(self, response_module):
         _mock_device_lookup(response_module.hosts, MOCK_DEVICE)
@@ -224,6 +223,7 @@ class TestToolRegistration:
         with patch("modules.response.Hosts") as MockHosts:
             MockHosts.return_value = MagicMock()
             from modules.response import ResponseModule
+
             module = ResponseModule(mock_client)
             module.allow_writes = True
         server = MagicMock()

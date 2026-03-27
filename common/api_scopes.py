@@ -12,31 +12,25 @@ OPERATION_SCOPES = {
     "start_search": ["ngsiem:read"],
     "get_search_status": ["ngsiem:read"],
     "stop_search": ["ngsiem:write"],
-
     # Alerts
     "query_alerts_v2": ["alerts:read"],
     "get_alerts_v2": ["alerts:read"],
     "update_alerts_v3": ["alerts:write"],
-
     # Detects (Endpoint)
     "get_detect_summaries": ["detects:read"],
-
     # Hosts
     "query_devices_by_filter": ["hosts:read"],
     "get_device_details": ["hosts:read"],
     "query_device_login_history": ["hosts:read"],
     "query_network_address_history": ["hosts:read"],
-
     # Correlation Rules
     "query_rules": ["correlation-rules:read"],
     "get_rules": ["correlation-rules:read"],
     "update_rules": ["correlation-rules:write"],
-
     # CSPM Registration
     "get_aws_account": ["cspm-registration:read"],
     "get_azure_account": ["cspm-registration:read"],
     "get_policy_settings": ["cspm-registration:read"],
-
     # Case Management
     "queries_cases_get_v1": ["cases:read"],
     "entities_cases_post_v2": ["cases:read"],
@@ -49,7 +43,6 @@ OPERATION_SCOPES = {
     "entities_files_upload_post_v1": ["cases:write"],
     "entities_fields_get_v1": ["cases:read"],
     "queries_fields_get_v1": ["cases:read"],
-
     # Cloud Security
     "combined_cloud_risks": ["cloud-security:read"],
     "query_iom_entities": ["cloud-security-detections:read"],

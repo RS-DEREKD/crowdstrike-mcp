@@ -1,7 +1,7 @@
 """Tests for tool-level read/write permission gating."""
 
-import sys
 import os
+import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -92,6 +92,7 @@ class TestRegistryAllowWrites:
             mock_discover.return_value = [FakeModule]
 
             from registry import get_available_modules
+
             modules = get_available_modules(mock_client, allow_writes=False)
             assert len(modules) == 1
             assert modules[0].allow_writes is False
@@ -108,6 +109,7 @@ class TestRegistryAllowWrites:
             mock_discover.return_value = [FakeModule]
 
             from registry import get_available_modules
+
             modules = get_available_modules(mock_client, allow_writes=True)
             assert len(modules) == 1
             assert modules[0].allow_writes is True

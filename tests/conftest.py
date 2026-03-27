@@ -1,8 +1,8 @@
 """Shared fixtures for MCP server unit tests."""
 
-import sys
 import os
-from unittest.mock import MagicMock, patch
+import sys
+from unittest.mock import MagicMock
 
 import pytest
 

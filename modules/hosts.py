@@ -10,10 +10,10 @@ Tools:
 from __future__ import annotations
 
 import json
-from typing import Annotated, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Annotated, Optional
 
-from modules.base import BaseModule
 from common.errors import format_api_error
+from modules.base import BaseModule
 from utils import format_text_response
 
 if TYPE_CHECKING:
@@ -21,6 +21,7 @@ if TYPE_CHECKING:
 
 try:
     from falconpy import Hosts
+
     HOSTS_AVAILABLE = True
 except ImportError:
     HOSTS_AVAILABLE = False
@@ -32,10 +33,7 @@ class HostsModule(BaseModule):
     def __init__(self, client):
         super().__init__(client)
         if not HOSTS_AVAILABLE:
-            raise ImportError(
-                "falconpy.Hosts not available. "
-                "Ensure crowdstrike-falconpy >= 1.6.0 is installed."
-            )
+            raise ImportError("falconpy.Hosts not available. Ensure crowdstrike-falconpy >= 1.6.0 is installed.")
         self.hosts = Hosts(auth_object=self.client.auth_object)
         self._log("Initialized")
 
@@ -46,25 +44,29 @@ class HostsModule(BaseModule):
             return HOST_FQL
 
         server.resource(
-            "falcon://fql/hosts", name="Host FQL Syntax Guide",
+            "falcon://fql/hosts",
+            name="Host FQL Syntax Guide",
             description="Documentation: Host FQL filter syntax",
         )(_host_fql)
         self.resources.append("falcon://fql/hosts")
 
     def register_tools(self, server: FastMCP) -> None:
         self._add_tool(
-            server, self.host_lookup, name="host_lookup",
-            description=(
-                "Look up device details: OS, last seen, containment status, "
-                "policies, agent version. Search by hostname or device_id."
-            ),
+            server,
+            self.host_lookup,
+            name="host_lookup",
+            description=("Look up device details: OS, last seen, containment status, policies, agent version. Search by hostname or device_id."),
         )
         self._add_tool(
-            server, self.host_login_history, name="host_login_history",
+            server,
+            self.host_login_history,
+            name="host_login_history",
             description="Get recent login events for a device by device_id.",
         )
         self._add_tool(
-            server, self.host_network_history, name="host_network_history",
+            server,
+            self.host_network_history,
+            name="host_network_history",
             description="Get network address history for a device by device_id.",
         )
 
@@ -82,7 +84,8 @@ class HostsModule(BaseModule):
 
         if not result.get("success"):
             return format_text_response(
-                f"Failed to look up host: {result.get('error')}", raw=True,
+                f"Failed to look up host: {result.get('error')}",
+                raw=True,
             )
 
         devices = result.get("devices", [])
@@ -109,9 +112,7 @@ class HostsModule(BaseModule):
                 lines.append("- Policies:")
                 for ptype, pdata in policies.items():
                     if isinstance(pdata, dict):
-                        lines.append(
-                            f"  - {ptype}: applied={pdata.get('applied', 'N/A')}"
-                        )
+                        lines.append(f"  - {ptype}: applied={pdata.get('applied', 'N/A')}")
             lines.append("")
 
         return format_text_response("\n".join(lines), raw=True)
@@ -125,7 +126,8 @@ class HostsModule(BaseModule):
 
         if not result.get("success"):
             return format_text_response(
-                f"Failed to get login history: {result.get('error')}", raw=True,
+                f"Failed to get login history: {result.get('error')}",
+                raw=True,
             )
 
         lines = [
@@ -152,7 +154,8 @@ class HostsModule(BaseModule):
 
         if not result.get("success"):
             return format_text_response(
-                f"Failed to get network history: {result.get('error')}", raw=True,
+                f"Failed to get network history: {result.get('error')}",
+                raw=True,
             )
 
         lines = [
@@ -201,30 +204,32 @@ class HostsModule(BaseModule):
 
             devices = []
             for device in resources:
-                devices.append({
-                    "device_id": device.get("device_id", ""),
-                    "hostname": device.get("hostname", ""),
-                    "platform_name": device.get("platform_name", ""),
-                    "os_version": device.get("os_version", ""),
-                    "os_build": device.get("os_build", ""),
-                    "agent_version": device.get("agent_version", ""),
-                    "last_seen": device.get("last_seen", ""),
-                    "first_seen": device.get("first_seen", ""),
-                    "status": device.get("status", ""),
-                    "containment_status": device.get("containment_status", "normal"),
-                    "local_ip": device.get("local_ip", ""),
-                    "external_ip": device.get("external_ip", ""),
-                    "mac_address": device.get("mac_address", ""),
-                    "machine_domain": device.get("machine_domain", ""),
-                    "ou": device.get("ou", []),
-                    "site_name": device.get("site_name", ""),
-                    "system_manufacturer": device.get("system_manufacturer", ""),
-                    "system_product_name": device.get("system_product_name", ""),
-                    "tags": device.get("tags", []),
-                    "groups": device.get("groups", []),
-                    "device_policies": self._extract_policies(device.get("device_policies", {})),
-                    "meta": {"version": device.get("meta", {}).get("version", "")},
-                })
+                devices.append(
+                    {
+                        "device_id": device.get("device_id", ""),
+                        "hostname": device.get("hostname", ""),
+                        "platform_name": device.get("platform_name", ""),
+                        "os_version": device.get("os_version", ""),
+                        "os_build": device.get("os_build", ""),
+                        "agent_version": device.get("agent_version", ""),
+                        "last_seen": device.get("last_seen", ""),
+                        "first_seen": device.get("first_seen", ""),
+                        "status": device.get("status", ""),
+                        "containment_status": device.get("containment_status", "normal"),
+                        "local_ip": device.get("local_ip", ""),
+                        "external_ip": device.get("external_ip", ""),
+                        "mac_address": device.get("mac_address", ""),
+                        "machine_domain": device.get("machine_domain", ""),
+                        "ou": device.get("ou", []),
+                        "site_name": device.get("site_name", ""),
+                        "system_manufacturer": device.get("system_manufacturer", ""),
+                        "system_product_name": device.get("system_product_name", ""),
+                        "tags": device.get("tags", []),
+                        "groups": device.get("groups", []),
+                        "device_policies": self._extract_policies(device.get("device_policies", {})),
+                        "meta": {"version": device.get("meta", {}).get("version", "")},
+                    }
+                )
 
             return {"success": True, "devices": devices, "count": len(devices)}
         except Exception as e:

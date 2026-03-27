@@ -14,8 +14,9 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Callable
 
 if TYPE_CHECKING:
-    from client import FalconClient
     from mcp.server.fastmcp import FastMCP
+
+    from client import FalconClient
 
 _VALID_TIERS = {"read", "write"}
 
@@ -65,9 +66,7 @@ class BaseModule(ABC):
             ValueError: If ``tier`` is not a valid value.
         """
         if tier not in _VALID_TIERS:
-            raise ValueError(
-                f"Invalid tier {tier!r} for tool {name!r}. Must be one of: {sorted(_VALID_TIERS)}"
-            )
+            raise ValueError(f"Invalid tier {tier!r} for tool {name!r}. Must be one of: {sorted(_VALID_TIERS)}")
         if tier == "write" and not self.allow_writes:
             self._log(f"Skipping write tool '{name}' (allow_writes=False)")
             return

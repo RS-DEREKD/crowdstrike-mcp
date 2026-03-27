@@ -13,12 +13,12 @@ from __future__ import annotations
 import json
 import os
 import re
-from typing import Annotated, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Annotated, Optional
 
 import yaml
 
-from modules.base import BaseModule
 from common.errors import format_api_error
+from modules.base import BaseModule
 from utils import format_text_response
 
 if TYPE_CHECKING:
@@ -26,12 +26,14 @@ if TYPE_CHECKING:
 
 try:
     from falconpy import CorrelationRules
+
     CORRELATION_AVAILABLE = True
 except ImportError:
     CORRELATION_AVAILABLE = False
 
 try:
     from falconpy import APIHarnessV2
+
     HARNESS_AVAILABLE = True
 except ImportError:
     HARNESS_AVAILABLE = False
@@ -55,10 +57,7 @@ class CorrelationModule(BaseModule):
         elif HARNESS_AVAILABLE:
             self._init_harness()
         else:
-            raise ImportError(
-                "Neither falconpy.CorrelationRules nor falconpy.APIHarnessV2 available. "
-                "Ensure crowdstrike-falconpy >= 1.6.0 is installed."
-            )
+            raise ImportError("Neither falconpy.CorrelationRules nor falconpy.APIHarnessV2 available. Ensure crowdstrike-falconpy >= 1.6.0 is installed.")
 
         # Path to crowdstrike-detections repo for IaC file writes
         self._detections_repo_path = os.environ.get(
@@ -76,33 +75,36 @@ class CorrelationModule(BaseModule):
 
     def register_tools(self, server: FastMCP) -> None:
         self._add_tool(
-            server, self.correlation_list_rules, name="correlation_list_rules",
-            description=(
-                "List NGSIEM correlation/detection rules with optional filtering "
-                "by enabled status and name search."
-            ),
+            server,
+            self.correlation_list_rules,
+            name="correlation_list_rules",
+            description=("List NGSIEM correlation/detection rules with optional filtering by enabled status and name search."),
         )
         self._add_tool(
-            server, self.correlation_get_rule, name="correlation_get_rule",
-            description=(
-                "Get full details for correlation rules: CQL filter, severity, "
-                "MITRE mapping, notification settings."
-            ),
+            server,
+            self.correlation_get_rule,
+            name="correlation_get_rule",
+            description=("Get full details for correlation rules: CQL filter, severity, MITRE mapping, notification settings."),
         )
         self._add_tool(
-            server, self.correlation_update_rule, name="correlation_update_rule",
+            server,
+            self.correlation_update_rule,
+            name="correlation_update_rule",
             description="Enable or disable a correlation rule with an audit comment.",
             tier="write",
         )
         self._add_tool(
-            server, self.correlation_export_rule, name="correlation_export_rule",
+            server,
+            self.correlation_export_rule,
+            name="correlation_export_rule",
             description="Export a correlation rule in structured format for review.",
         )
         self._add_tool(
-            server, self.correlation_import_to_iac, name="correlation_import_to_iac",
+            server,
+            self.correlation_import_to_iac,
+            name="correlation_import_to_iac",
             description=(
-                "Export a console-created correlation rule to an IaC YAML template "
-                "in the detections repo. Use dry_run=True to preview without writing."
+                "Export a console-created correlation rule to an IaC YAML template in the detections repo. Use dry_run=True to preview without writing."
             ),
             tier="write",
         )
@@ -170,7 +172,7 @@ class CorrelationModule(BaseModule):
 
             search = rule.get("search", {})
             if search and search.get("filter"):
-                lines.append(f"\n**CQL Filter:**")
+                lines.append("\n**CQL Filter:**")
                 lines.append("```")
                 lines.append(search["filter"])
                 lines.append("```")
@@ -258,12 +260,7 @@ class CorrelationModule(BaseModule):
                 batch_ids = response.get("body", {}).get("resources", [])
                 all_rule_ids.extend(batch_ids)
 
-                total_api = (
-                    response.get("body", {})
-                    .get("meta", {})
-                    .get("pagination", {})
-                    .get("total", 0)
-                )
+                total_api = response.get("body", {}).get("meta", {}).get("pagination", {}).get("total", 0)
                 if len(all_rule_ids) >= total_api or not batch_ids:
                     break
                 offset += batch_limit
@@ -274,7 +271,7 @@ class CorrelationModule(BaseModule):
             all_rules = []
             batch_size = 100
             for i in range(0, len(all_rule_ids), batch_size):
-                batch = all_rule_ids[i:i + batch_size]
+                batch = all_rule_ids[i : i + batch_size]
                 if self._use_harness:
                     details = self.falcon.command("entities_rules_get_v1", ids=batch)
                 else:
@@ -290,28 +287,26 @@ class CorrelationModule(BaseModule):
                 filtered = [r for r in filtered if r.get("enabled", False) is enabled]
             if search:
                 search_lower = search.lower()
-                filtered = [
-                    r for r in filtered
-                    if search_lower in r.get("name", "").lower()
-                    or search_lower in r.get("description", "").lower()
-                ]
+                filtered = [r for r in filtered if search_lower in r.get("name", "").lower() or search_lower in r.get("description", "").lower()]
 
             total_matched = len(filtered)
             filtered = filtered[:max_results]
 
             summaries = []
             for rule in filtered:
-                summaries.append({
-                    "id": rule.get("id", ""),
-                    "name": rule.get("name", ""),
-                    "description": rule.get("description", "")[:200],
-                    "enabled": rule.get("enabled", False),
-                    "status": rule.get("status", ""),
-                    "severity": rule.get("severity", ""),
-                    "created_on": rule.get("created_on", ""),
-                    "updated_on": rule.get("updated_on", ""),
-                    "created_by": rule.get("created_by", ""),
-                })
+                summaries.append(
+                    {
+                        "id": rule.get("id", ""),
+                        "name": rule.get("name", ""),
+                        "description": rule.get("description", "")[:200],
+                        "enabled": rule.get("enabled", False),
+                        "status": rule.get("status", ""),
+                        "severity": rule.get("severity", ""),
+                        "created_on": rule.get("created_on", ""),
+                        "updated_on": rule.get("updated_on", ""),
+                        "created_by": rule.get("created_by", ""),
+                    }
+                )
 
             return {"success": True, "rules": summaries, "count": len(summaries), "total": total_matched}
         except Exception as e:
@@ -424,7 +419,7 @@ class CorrelationModule(BaseModule):
             lines = []
             if not dry_run and not self._detections_repo_path:
                 lines.append("NOTE: Detections repo path not configured — falling back to dry-run mode.")
-                lines.append(f"Set DETECTIONS_REPO_PATH env var or place the repo at the expected location.")
+                lines.append("Set DETECTIONS_REPO_PATH env var or place the repo at the expected location.")
                 lines.append("")
             lines.append(f"## IaC Template for: {rule.get('name', 'Unknown')}")
             lines.append(f"Resource ID: `{template['resource_id']}`")
@@ -450,8 +445,7 @@ class CorrelationModule(BaseModule):
 
         if not os.path.isdir(target_dir):
             return format_text_response(
-                f"Vendor directory does not exist: `{target_dir}`\n"
-                f"Create it first or use a valid vendor.",
+                f"Vendor directory does not exist: `{target_dir}`\nCreate it first or use a valid vendor.",
                 raw=True,
             )
 
@@ -530,12 +524,12 @@ class CorrelationModule(BaseModule):
 
         # Lowercase, remove special characters except underscores, hyphens, spaces
         sanitized = name.lower()
-        sanitized = re.sub(r'[^a-z0-9\s_-]', '', sanitized)
+        sanitized = re.sub(r"[^a-z0-9\s_-]", "", sanitized)
         # Replace spaces with underscores (preserving hyphens as-is)
-        sanitized = re.sub(r'\s+', '_', sanitized)
+        sanitized = re.sub(r"\s+", "_", sanitized)
         # Collapse multiple underscores
-        sanitized = re.sub(r'_+', '_', sanitized)
-        sanitized = sanitized.strip('_')
+        sanitized = re.sub(r"_+", "_", sanitized)
+        sanitized = sanitized.strip("_")
 
         # The convention uses " - " in names which becomes "_-_" in resource_id
         # e.g. "AWS - CloudTrail - Suspicious IAM Activity" -> "aws_-_cloudtrail_-_suspicious_iam_activity"
@@ -544,14 +538,15 @@ class CorrelationModule(BaseModule):
     @staticmethod
     def _template_to_yaml(template: dict) -> str:
         """Serialize a template dict to YAML string matching the project's style."""
+
         # Use block style for multi-line strings (filter)
         class BlockDumper(yaml.SafeDumper):
             pass
 
         def str_representer(dumper, data):
-            if '\n' in data:
-                return dumper.represent_scalar('tag:yaml.org,2002:str', data, style='|')
-            return dumper.represent_scalar('tag:yaml.org,2002:str', data)
+            if "\n" in data:
+                return dumper.represent_scalar("tag:yaml.org,2002:str", data, style="|")
+            return dumper.represent_scalar("tag:yaml.org,2002:str", data)
 
         BlockDumper.add_representer(str, str_representer)
 

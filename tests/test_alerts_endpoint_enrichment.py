@@ -1,9 +1,8 @@
 """Tests for AlertsModule endpoint enrichment via NGSIEM (replaces dead Detects API)."""
 
-import sys
 import os
-import asyncio
-from unittest.mock import MagicMock, patch, PropertyMock
+import sys
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -13,9 +12,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 @pytest.fixture
 def alerts_module(mock_client):
     """Create AlertsModule with mocked APIs."""
-    with patch("modules.alerts.Alerts") as MockAlerts, \
-         patch("modules.alerts._NGSIEM_AVAILABLE", True), \
-         patch("modules.alerts.NGSIEM") as MockNGSIEM:
+    with patch("modules.alerts.Alerts"), patch("modules.alerts._NGSIEM_AVAILABLE", True), patch("modules.alerts.NGSIEM") as MockNGSIEM:
         mock_ngsiem_instance = MagicMock()
         MockNGSIEM.return_value = mock_ngsiem_instance
         module = __import__("modules.alerts", fromlist=["AlertsModule"]).AlertsModule(mock_client)
@@ -95,4 +92,4 @@ class TestEndpointEnrichmentViaNGSIEM:
 
     def test_detects_api_is_not_initialized(self, alerts_module):
         """Confirm the Detects client is not used."""
-        assert not hasattr(alerts_module, '_detects') or alerts_module._detects is None
+        assert not hasattr(alerts_module, "_detects") or alerts_module._detects is None
