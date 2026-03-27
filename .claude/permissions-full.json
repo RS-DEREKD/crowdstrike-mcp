@@ -1,0 +1,14 @@
+{
+  "_comment": "Full access: all tools auto-allowed. Containment and rule changes always prompt. Requires --allow-writes on the server.",
+  "permissions": {
+    "allow": [
+      "mcp__crowdstrike__*"
+    ],
+    "ask": [
+      "mcp__crowdstrike__host_contain",
+      "mcp__crowdstrike__host_lift_containment",
+      "mcp__crowdstrike__correlation_update_rule",
+      "mcp__crowdstrike__correlation_import_to_iac"
+    ]
+  }
+}

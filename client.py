@@ -20,15 +20,13 @@ from falconpy import OAuth2
 
 try:
     import falconpy
+
     _FALCONPY_VERSION = getattr(falconpy, "__version__", "unknown")
 except Exception:
     _FALCONPY_VERSION = "unknown"
 
 SERVER_VERSION = "3.0.0"
-USER_AGENT = (
-    f"crowdstrike-custom-mcp/{SERVER_VERSION} "
-    f"(falconpy/{_FALCONPY_VERSION}; Python/{platform.python_version()})"
-)
+USER_AGENT = f"crowdstrike-custom-mcp/{SERVER_VERSION} (falconpy/{_FALCONPY_VERSION}; Python/{platform.python_version()})"
 
 
 class FalconClient:
@@ -41,9 +39,7 @@ class FalconClient:
         base_url: Optional[str] = None,
         credential_file: Optional[str] = None,
     ):
-        resolved = self._resolve_credentials(
-            client_id, client_secret, base_url, credential_file
-        )
+        resolved = self._resolve_credentials(client_id, client_secret, base_url, credential_file)
         self._client_id = resolved["client_id"]
         self._client_secret = resolved["client_secret"]
         self._base_url = resolved["base_url"]

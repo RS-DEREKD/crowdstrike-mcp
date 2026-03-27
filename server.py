@@ -14,11 +14,13 @@ Usage:
   python server.py --transport sse --port 8000        # SSE
   python server.py --modules ngsiem,alerts,hosts      # Selective modules
   python server.py --debug                            # Debug logging
+  python server.py --allow-writes                     # Enable write tools
 
 Environment variables (override CLI args):
   FALCON_CLIENT_ID, FALCON_CLIENT_SECRET, FALCON_BASE_URL
   FALCON_MCP_TRANSPORT, FALCON_MCP_MODULES, FALCON_MCP_DEBUG
   FALCON_MCP_HOST, FALCON_MCP_PORT, FALCON_MCP_API_KEY
+  FALCON_MCP_ALLOW_WRITES
 """
 
 from __future__ import annotations
@@ -37,8 +39,8 @@ load_dotenv()
 
 from mcp.server.fastmcp import FastMCP
 
-from client import FalconClient, SERVER_VERSION
-from registry import get_available_modules, get_module_names
+from client import FalconClient
+from registry import get_available_modules
 
 
 class FalconMCPServer:
@@ -48,6 +50,7 @@ class FalconMCPServer:
         self,
         transport: str = "stdio",
         modules_filter: set[str] | None = None,
+        allow_writes: bool = False,
         debug: bool = False,
         host: str = "127.0.0.1",
         port: int = 8000,
@@ -74,7 +77,11 @@ class FalconMCPServer:
         self.server = FastMCP("crowdstrike-falcon")
 
         # Discover and register modules
-        self._modules = get_available_modules(self.client, enabled=modules_filter)
+        self._modules = get_available_modules(
+            self.client,
+            enabled=modules_filter,
+            allow_writes=allow_writes,
+        )
 
         for mod in self._modules:
             mod.register_tools(self.server)
@@ -82,10 +89,8 @@ class FalconMCPServer:
 
         tool_count = sum(len(m.tools) for m in self._modules)
         resource_count = sum(len(m.resources) for m in self._modules)
-        self._log(
-            f"Registered {tool_count} tools and {resource_count} resources "
-            f"from {len(self._modules)} modules"
-        )
+        write_mode = "enabled" if allow_writes else "read-only"
+        self._log(f"Registered {tool_count} tools and {resource_count} resources from {len(self._modules)} modules ({write_mode})")
 
     def run(self):
         """Start the server with the configured transport."""
@@ -114,6 +119,7 @@ class FalconMCPServer:
         # Wrap with API key middleware if configured
         if self.api_key:
             from common.auth_middleware import auth_middleware
+
             app = auth_middleware(app, self.api_key)
             self._log(f"API key authentication enabled for {transport_type}")
 
@@ -164,6 +170,12 @@ def parse_args() -> argparse.Namespace:
         default=os.environ.get("FALCON_MCP_API_KEY"),
         help="API key for HTTP transport authentication",
     )
+    parser.add_argument(
+        "--allow-writes",
+        action="store_true",
+        default=os.environ.get("FALCON_MCP_ALLOW_WRITES", "").lower() in ("1", "true", "yes"),
+        help="Enable write tools (update_alert_status, host_contain, etc). Default: read-only.",
+    )
 
     return parser.parse_args()
 
@@ -179,6 +191,7 @@ def main():
     falcon_server = FalconMCPServer(
         transport=args.transport,
         modules_filter=modules_filter,
+        allow_writes=args.allow_writes,
         debug=args.debug,
         host=args.host,
         port=args.port,

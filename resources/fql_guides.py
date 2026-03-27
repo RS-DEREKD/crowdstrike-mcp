@@ -215,13 +215,12 @@ def register_fql_resources(server: FastMCP) -> list[str]:
     def _make_fn(text):
         def fn():
             return text
+
         return fn
 
     uris = []
     for uri, name, content in resources_list:
-        server.resource(uri, name=name, description=f"Documentation: {name}")(
-            _make_fn(content)
-        )
+        server.resource(uri, name=name, description=f"Documentation: {name}")(_make_fn(content))
         uris.append(uri)
 
     return uris

@@ -9,13 +9,12 @@ import re
 import sys
 import tempfile
 from datetime import datetime
-from typing import Dict, Optional, List, Union
-from urllib.parse import urlparse, parse_qs, unquote
-
+from typing import Dict, List, Optional, Union
+from urllib.parse import parse_qs, unquote, urlparse
 
 # Large response handling
-LARGE_RESPONSE_THRESHOLD = int(os.environ.get('MCP_LARGE_RESPONSE_THRESHOLD', '20000'))
-MCP_OUTPUT_DIR = os.path.join(tempfile.gettempdir(), 'crowdstrike-mcp')
+LARGE_RESPONSE_THRESHOLD = int(os.environ.get("MCP_LARGE_RESPONSE_THRESHOLD", "20000"))
+MCP_OUTPUT_DIR = os.path.join(tempfile.gettempdir(), "crowdstrike-mcp")
 _current_tool_name = ""
 
 
@@ -26,7 +25,7 @@ def set_current_tool(name: str) -> None:
 
 
 # Control character pattern (everything except printable ASCII + common whitespace)
-_CONTROL_CHAR_RE = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]')
+_CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 
 
 def sanitize_input(value: str, max_length: int = 255) -> str:
@@ -48,7 +47,7 @@ def sanitize_input(value: str, max_length: int = 255) -> str:
         return str(value)[:max_length]
 
     value = value.strip()
-    value = _CONTROL_CHAR_RE.sub('', value)
+    value = _CONTROL_CHAR_RE.sub("", value)
     # Strip wrapping quotes (single or double) that can confuse FQL filters
     if len(value) >= 2 and value[0] == value[-1] and value[0] in ('"', "'"):
         value = value[1:-1]
@@ -65,7 +64,7 @@ def load_credentials(config_path: Optional[str] = None) -> Optional[Dict[str, st
         config_path = os.path.expanduser("~/.config/falcon/credentials.json")
 
     try:
-        with open(config_path, 'r') as f:
+        with open(config_path, "r") as f:
             config = json.load(f)
         return config
     except Exception as e:
@@ -117,42 +116,42 @@ def _extract_summary(text: str, max_lines: int = 40) -> str:
     Keeps header/metadata lines and the first data block, truncates bulk
     event/behavior JSON that makes up the majority of large responses.
     """
-    lines = text.split('\n')
+    lines = text.split("\n")
     summary_lines = []
     data_blocks_seen = 0
     in_data_block = False
 
     for line in lines:
         # Detect start of bulk data sections
-        if any(marker in line for marker in ['```json', '#### Event ', '#### Behavior ']):
+        if any(marker in line for marker in ["```json", "#### Event ", "#### Behavior "]):
             data_blocks_seen += 1
             if data_blocks_seen > 1:
                 break
             # Keep the first data block marker
-            in_data_block = '```json' in line
+            in_data_block = "```json" in line
 
         summary_lines.append(line)
 
         # End of first json block
-        if in_data_block and line.strip() == '```' and len(summary_lines) > 1:
+        if in_data_block and line.strip() == "```" and len(summary_lines) > 1:
             in_data_block = False
 
         if len(summary_lines) >= max_lines:
             break
 
-    return '\n'.join(summary_lines)
+    return "\n".join(summary_lines)
 
 
 def _write_response_file(text: str, tool_name: str = "") -> str:
     """Write a large response to a temp file and return the path."""
     os.makedirs(MCP_OUTPUT_DIR, exist_ok=True)
 
-    safe_name = tool_name.replace(' ', '_').replace('/', '_') if tool_name else 'response'
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    safe_name = tool_name.replace(" ", "_").replace("/", "_") if tool_name else "response"
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"{safe_name}_{timestamp}.txt"
     file_path = os.path.join(MCP_OUTPUT_DIR, filename)
 
-    with open(file_path, 'w') as f:
+    with open(file_path, "w") as f:
         f.write(text)
 
     _cleanup_old_files(MCP_OUTPUT_DIR, keep=20)
@@ -163,8 +162,7 @@ def _cleanup_old_files(directory: str, keep: int = 20) -> None:
     """Remove oldest files if directory has more than `keep` files."""
     try:
         files = sorted(
-            [os.path.join(directory, f) for f in os.listdir(directory)
-             if os.path.isfile(os.path.join(directory, f))],
+            [os.path.join(directory, f) for f in os.listdir(directory) if os.path.isfile(os.path.join(directory, f))],
             key=os.path.getmtime,
         )
         for f in files[:-keep]:
@@ -249,24 +247,14 @@ def parse_composite_id(composite_id: str) -> Dict[str, str]:
 
     Returns dict with keys: product_prefix, product_type, product_name, parts
     """
-    parts = composite_id.split(':')
+    parts = composite_id.split(":")
 
     if len(parts) < 3:
-        return {
-            "product_prefix": "unknown",
-            "product_type": "unknown",
-            "product_name": "Unknown",
-            "parts": parts
-        }
+        return {"product_prefix": "unknown", "product_type": "unknown", "product_name": "Unknown", "parts": parts}
 
     prefix = parts[1]
     # Handle fcs sub-types like "fcs" from "cust_id:fcs:ioa-212:uuid"
     product_type = PRODUCT_PREFIX_MAP.get(prefix, "unknown")
     product_name = PRODUCT_DISPLAY_NAMES.get(product_type, "Unknown")
 
-    return {
-        "product_prefix": prefix,
-        "product_type": product_type,
-        "product_name": product_name,
-        "parts": parts
-    }
+    return {"product_prefix": prefix, "product_type": product_type, "product_name": product_name, "parts": parts}

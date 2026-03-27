@@ -18,12 +18,12 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Annotated, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Annotated, Optional
 
 from falconpy import CaseManagement
 
-from modules.base import BaseModule
 from common.errors import format_api_error
+from modules.base import BaseModule
 from utils import format_text_response
 
 if TYPE_CHECKING:
@@ -45,59 +45,81 @@ class CaseManagementModule(BaseModule):
             return CASE_FQL
 
         server.resource(
-            "falcon://fql/cases", name="Case FQL Syntax Guide",
+            "falcon://fql/cases",
+            name="Case FQL Syntax Guide",
             description="Documentation: Case FQL filter syntax",
         )(_case_fql)
         self.resources.append("falcon://fql/cases")
 
     def register_tools(self, server: FastMCP) -> None:
         self._add_tool(
-            server, self.case_query, name="case_query",
+            server,
+            self.case_query,
+            name="case_query",
             description=(
                 "Query and list NG-SIEM Cases with FQL filtering, free-text search, "
                 "and pagination. Returns case summaries with status, severity, and assignee."
             ),
         )
         self._add_tool(
-            server, self.case_get, name="case_get",
+            server,
+            self.case_get,
+            name="case_get",
             description="Get full case details by ID(s) including evidence, tags, and timeline.",
         )
         self._add_tool(
-            server, self.case_create, name="case_create",
-            description=(
-                "Create a new NG-SIEM Case with name, description, severity, "
-                "optional assignee, tags, and initial alert/event evidence."
-            ),
+            server,
+            self.case_create,
+            name="case_create",
+            description=("Create a new NG-SIEM Case with name, description, severity, optional assignee, tags, and initial alert/event evidence."),
+            tier="write",
         )
         self._add_tool(
-            server, self.case_update, name="case_update",
-            description=(
-                "Update case fields: status, severity, assignee, name, description. "
-                "Handles optimistic concurrency automatically."
-            ),
+            server,
+            self.case_update,
+            name="case_update",
+            description=("Update case fields: status, severity, assignee, name, description. Handles optimistic concurrency automatically."),
+            tier="write",
         )
         self._add_tool(
-            server, self.case_add_alert_evidence, name="case_add_alert_evidence",
+            server,
+            self.case_add_alert_evidence,
+            name="case_add_alert_evidence",
             description="Attach CrowdStrike alert composite IDs as evidence to an existing case.",
+            tier="write",
         )
         self._add_tool(
-            server, self.case_add_event_evidence, name="case_add_event_evidence",
+            server,
+            self.case_add_event_evidence,
+            name="case_add_event_evidence",
             description="Attach NGSIEM event IDs as evidence to an existing case.",
+            tier="write",
         )
         self._add_tool(
-            server, self.case_add_tags, name="case_add_tags",
+            server,
+            self.case_add_tags,
+            name="case_add_tags",
             description="Add tags to an existing case for categorization and filtering.",
+            tier="write",
         )
         self._add_tool(
-            server, self.case_delete_tags, name="case_delete_tags",
+            server,
+            self.case_delete_tags,
+            name="case_delete_tags",
             description="Remove tags from an existing case.",
+            tier="write",
         )
         self._add_tool(
-            server, self.case_upload_file, name="case_upload_file",
+            server,
+            self.case_upload_file,
+            name="case_upload_file",
             description="Upload a file attachment to an existing case.",
+            tier="write",
         )
         self._add_tool(
-            server, self.case_get_fields, name="case_get_fields",
+            server,
+            self.case_get_fields,
+            name="case_get_fields",
             description="List available case field definitions and their types.",
         )
 
@@ -115,12 +137,17 @@ class CaseManagementModule(BaseModule):
     ) -> str:
         """Query and list cases with flexible filtering."""
         result = self._query_cases(
-            filter=filter, q=q, status=status, sort=sort, max_results=max_results,
+            filter=filter,
+            q=q,
+            status=status,
+            sort=sort,
+            max_results=max_results,
         )
 
         if not result.get("success"):
             return format_text_response(
-                f"Failed to query cases: {result.get('error')}", raw=True,
+                f"Failed to query cases: {result.get('error')}",
+                raw=True,
             )
 
         cases = result["cases"]
@@ -141,10 +168,7 @@ class CaseManagementModule(BaseModule):
             for i, c in enumerate(cases, 1):
                 assigned = f" -> {c['assigned_to']}" if c.get("assigned_to") else ""
                 tags_str = f" [{', '.join(c['tags'])}]" if c.get("tags") else ""
-                lines.append(
-                    f"{i}. [{c['severity_name']}] {c['name']} "
-                    f"(status: {c['status']}{assigned}{tags_str})"
-                )
+                lines.append(f"{i}. [{c['severity_name']}] {c['name']} (status: {c['status']}{assigned}{tags_str})")
                 lines.append(f"   ID: {c['id']}")
                 lines.append(f"   Created: {c['created_on']}")
                 if c.get("description"):
@@ -162,7 +186,8 @@ class CaseManagementModule(BaseModule):
 
         if not result.get("success"):
             return format_text_response(
-                f"Failed to get cases: {result.get('error')}", raw=True,
+                f"Failed to get cases: {result.get('error')}",
+                raw=True,
             )
 
         lines = [f"Case Details ({result['count']} cases)", ""]
@@ -207,19 +232,24 @@ class CaseManagementModule(BaseModule):
     ) -> str:
         """Create a new NG-SIEM case."""
         result = self._create_case(
-            name=name, description=description, severity=severity,
+            name=name,
+            description=description,
+            severity=severity,
             assigned_to_user_uuid=assigned_to_user_uuid,
-            alert_ids=alert_ids, event_ids=event_ids, tags=tags,
+            alert_ids=alert_ids,
+            event_ids=event_ids,
+            tags=tags,
         )
 
         if not result.get("success"):
             return format_text_response(
-                f"Failed to create case: {result.get('error')}", raw=True,
+                f"Failed to create case: {result.get('error')}",
+                raw=True,
             )
 
         case = result["case"]
         lines = [
-            f"Case created successfully",
+            "Case created successfully",
             f"- **ID**: {case.get('id', 'N/A')}",
             f"- **Name**: {case.get('name', name)}",
             f"- **Status**: {case.get('status', 'new')}",
@@ -247,14 +277,18 @@ class CaseManagementModule(BaseModule):
     ) -> str:
         """Update case fields with automatic optimistic concurrency handling."""
         result = self._update_case(
-            case_id=case_id, status=status, severity=severity,
+            case_id=case_id,
+            status=status,
+            severity=severity,
             assigned_to_user_uuid=assigned_to_user_uuid,
-            name=name, description=description,
+            name=name,
+            description=description,
         )
 
         if not result.get("success"):
             return format_text_response(
-                f"Failed to update case: {result.get('error')}", raw=True,
+                f"Failed to update case: {result.get('error')}",
+                raw=True,
             )
 
         lines = [f"Case {case_id} updated successfully"]
@@ -274,7 +308,8 @@ class CaseManagementModule(BaseModule):
 
         if not result.get("success"):
             return format_text_response(
-                f"Failed to add alert evidence: {result.get('error')}", raw=True,
+                f"Failed to add alert evidence: {result.get('error')}",
+                raw=True,
             )
 
         return format_text_response(
@@ -292,7 +327,8 @@ class CaseManagementModule(BaseModule):
 
         if not result.get("success"):
             return format_text_response(
-                f"Failed to add event evidence: {result.get('error')}", raw=True,
+                f"Failed to add event evidence: {result.get('error')}",
+                raw=True,
             )
 
         return format_text_response(
@@ -310,7 +346,8 @@ class CaseManagementModule(BaseModule):
 
         if not result.get("success"):
             return format_text_response(
-                f"Failed to add tags: {result.get('error')}", raw=True,
+                f"Failed to add tags: {result.get('error')}",
+                raw=True,
             )
 
         return format_text_response(
@@ -328,7 +365,8 @@ class CaseManagementModule(BaseModule):
 
         if not result.get("success"):
             return format_text_response(
-                f"Failed to delete tags: {result.get('error')}", raw=True,
+                f"Failed to delete tags: {result.get('error')}",
+                raw=True,
             )
 
         return format_text_response(
@@ -347,7 +385,8 @@ class CaseManagementModule(BaseModule):
 
         if not result.get("success"):
             return format_text_response(
-                f"Failed to upload file: {result.get('error')}", raw=True,
+                f"Failed to upload file: {result.get('error')}",
+                raw=True,
             )
 
         return format_text_response(
@@ -361,7 +400,8 @@ class CaseManagementModule(BaseModule):
 
         if not result.get("success"):
             return format_text_response(
-                f"Failed to get fields: {result.get('error')}", raw=True,
+                f"Failed to get fields: {result.get('error')}",
+                raw=True,
             )
 
         fields = result.get("fields", [])
@@ -386,7 +426,11 @@ class CaseManagementModule(BaseModule):
     # ------------------------------------------------------------------
 
     _SEVERITY_NAMES = {
-        10: "Informational", 20: "Low", 30: "Medium", 40: "High", 50: "Critical",
+        10: "Informational",
+        20: "Low",
+        30: "Medium",
+        40: "High",
+        50: "Critical",
     }
 
     def _query_cases(self, filter=None, q=None, status=None, sort=None, max_results=50):
@@ -410,17 +454,17 @@ class CaseManagementModule(BaseModule):
             response = self.falcon.query_case_ids(**kwargs)
 
             if response["status_code"] != 200:
-                return {"success": False, "error": format_api_error(
-                    response, "Failed to query cases", operation="queries_cases_get_v1",
-                )}
+                return {
+                    "success": False,
+                    "error": format_api_error(
+                        response,
+                        "Failed to query cases",
+                        operation="queries_cases_get_v1",
+                    ),
+                }
 
             case_ids = response.get("body", {}).get("resources", [])
-            total_available = (
-                response.get("body", {})
-                .get("meta", {})
-                .get("pagination", {})
-                .get("total", len(case_ids))
-            )
+            total_available = response.get("body", {}).get("meta", {}).get("pagination", {}).get("total", len(case_ids))
 
             if not case_ids:
                 return {"success": True, "cases": [], "count": 0, "total_available": 0}
@@ -428,27 +472,34 @@ class CaseManagementModule(BaseModule):
             # Hydrate with full details
             details_response = self.falcon.get_cases(body={"ids": case_ids})
             if details_response["status_code"] != 200:
-                return {"success": False, "error": format_api_error(
-                    details_response, "Failed to get case details", operation="entities_cases_post_v2",
-                )}
+                return {
+                    "success": False,
+                    "error": format_api_error(
+                        details_response,
+                        "Failed to get case details",
+                        operation="entities_cases_post_v2",
+                    ),
+                }
 
             cases_data = details_response.get("body", {}).get("resources", [])
 
             summaries = []
             for c in cases_data:
                 sev = c.get("severity", 0)
-                summaries.append({
-                    "id": c.get("id", ""),
-                    "name": c.get("name", "Unknown"),
-                    "description": (c.get("description") or "")[:200],
-                    "status": c.get("status", "unknown"),
-                    "severity": sev,
-                    "severity_name": self._SEVERITY_NAMES.get(sev, f"Unknown({sev})"),
-                    "created_on": c.get("created_on", ""),
-                    "updated_on": c.get("updated_on", ""),
-                    "assigned_to": c.get("assigned_to_name", ""),
-                    "tags": c.get("tags", []),
-                })
+                summaries.append(
+                    {
+                        "id": c.get("id", ""),
+                        "name": c.get("name", "Unknown"),
+                        "description": (c.get("description") or "")[:200],
+                        "status": c.get("status", "unknown"),
+                        "severity": sev,
+                        "severity_name": self._SEVERITY_NAMES.get(sev, f"Unknown({sev})"),
+                        "created_on": c.get("created_on", ""),
+                        "updated_on": c.get("updated_on", ""),
+                        "assigned_to": c.get("assigned_to_name", ""),
+                        "tags": c.get("tags", []),
+                    }
+                )
 
             return {
                 "success": True,
@@ -464,9 +515,14 @@ class CaseManagementModule(BaseModule):
             response = self.falcon.get_cases(body={"ids": case_ids})
 
             if response["status_code"] != 200:
-                return {"success": False, "error": format_api_error(
-                    response, "Failed to get cases", operation="entities_cases_post_v2",
-                )}
+                return {
+                    "success": False,
+                    "error": format_api_error(
+                        response,
+                        "Failed to get cases",
+                        operation="entities_cases_post_v2",
+                    ),
+                }
 
             resources = response.get("body", {}).get("resources", [])
             if not resources:
@@ -476,8 +532,7 @@ class CaseManagementModule(BaseModule):
         except Exception as e:
             return {"success": False, "error": f"Error getting cases: {str(e)}"}
 
-    def _create_case(self, name, description, severity=30,
-                     assigned_to_user_uuid=None, alert_ids=None, event_ids=None, tags=None):
+    def _create_case(self, name, description, severity=30, assigned_to_user_uuid=None, alert_ids=None, event_ids=None, tags=None):
         try:
             # Resolve assignee: explicit > env var > None
             assignee = assigned_to_user_uuid or os.environ.get("CASE_DEFAULT_ASSIGNEE")
@@ -506,9 +561,14 @@ class CaseManagementModule(BaseModule):
             response = self.falcon.create_case(body=body)
 
             if response["status_code"] not in (200, 201):
-                return {"success": False, "error": format_api_error(
-                    response, "Failed to create case", operation="entities_cases_put_v2",
-                )}
+                return {
+                    "success": False,
+                    "error": format_api_error(
+                        response,
+                        "Failed to create case",
+                        operation="entities_cases_put_v2",
+                    ),
+                }
 
             resources = response.get("body", {}).get("resources", [])
             case = resources[0] if resources else body
@@ -517,8 +577,7 @@ class CaseManagementModule(BaseModule):
         except Exception as e:
             return {"success": False, "error": f"Error creating case: {str(e)}"}
 
-    def _update_case(self, case_id, status=None, severity=None,
-                     assigned_to_user_uuid=None, name=None, description=None):
+    def _update_case(self, case_id, status=None, severity=None, assigned_to_user_uuid=None, name=None, description=None):
         try:
             # Fetch current case to get version for optimistic concurrency
             current = self._get_cases([case_id])
@@ -558,9 +617,14 @@ class CaseManagementModule(BaseModule):
             response = self.falcon.update_case_fields(body=body)
 
             if response["status_code"] != 200:
-                return {"success": False, "error": format_api_error(
-                    response, "Failed to update case", operation="entities_cases_patch_v2",
-                )}
+                return {
+                    "success": False,
+                    "error": format_api_error(
+                        response,
+                        "Failed to update case",
+                        operation="entities_cases_patch_v2",
+                    ),
+                }
 
             return {"success": True, "case_id": case_id, "updates": updates}
         except Exception as e:
@@ -575,9 +639,14 @@ class CaseManagementModule(BaseModule):
             response = self.falcon.add_case_alert_evidence(body=body)
 
             if response["status_code"] != 200:
-                return {"success": False, "error": format_api_error(
-                    response, "Failed to add alert evidence", operation="entities_alert_evidence_post_v1",
-                )}
+                return {
+                    "success": False,
+                    "error": format_api_error(
+                        response,
+                        "Failed to add alert evidence",
+                        operation="entities_alert_evidence_post_v1",
+                    ),
+                }
 
             return {"success": True}
         except Exception as e:
@@ -592,9 +661,14 @@ class CaseManagementModule(BaseModule):
             response = self.falcon.add_case_event_evidence(body=body)
 
             if response["status_code"] != 200:
-                return {"success": False, "error": format_api_error(
-                    response, "Failed to add event evidence", operation="entities_event_evidence_post_v1",
-                )}
+                return {
+                    "success": False,
+                    "error": format_api_error(
+                        response,
+                        "Failed to add event evidence",
+                        operation="entities_event_evidence_post_v1",
+                    ),
+                }
 
             return {"success": True}
         except Exception as e:
@@ -606,9 +680,14 @@ class CaseManagementModule(BaseModule):
             response = self.falcon.add_case_tags(body=body)
 
             if response["status_code"] != 200:
-                return {"success": False, "error": format_api_error(
-                    response, "Failed to add tags", operation="entities_case_tags_post_v1",
-                )}
+                return {
+                    "success": False,
+                    "error": format_api_error(
+                        response,
+                        "Failed to add tags",
+                        operation="entities_case_tags_post_v1",
+                    ),
+                }
 
             return {"success": True}
         except Exception as e:
@@ -620,9 +699,14 @@ class CaseManagementModule(BaseModule):
             response = self.falcon.delete_case_tags(id=case_id, tag=tags)
 
             if response["status_code"] != 200:
-                return {"success": False, "error": format_api_error(
-                    response, "Failed to delete tags", operation="entities_case_tags_delete_v1",
-                )}
+                return {
+                    "success": False,
+                    "error": format_api_error(
+                        response,
+                        "Failed to delete tags",
+                        operation="entities_case_tags_delete_v1",
+                    ),
+                }
 
             return {"success": True}
         except Exception as e:
@@ -640,9 +724,14 @@ class CaseManagementModule(BaseModule):
             response = self.falcon.upload_file(**kwargs)
 
             if response["status_code"] not in (200, 201):
-                return {"success": False, "error": format_api_error(
-                    response, "Failed to upload file", operation="entities_files_upload_post_v1",
-                )}
+                return {
+                    "success": False,
+                    "error": format_api_error(
+                        response,
+                        "Failed to upload file",
+                        operation="entities_files_upload_post_v1",
+                    ),
+                }
 
             return {"success": True}
         except Exception as e:
@@ -654,9 +743,14 @@ class CaseManagementModule(BaseModule):
             query_response = self.falcon.query_fields()
 
             if query_response["status_code"] != 200:
-                return {"success": False, "error": format_api_error(
-                    query_response, "Failed to query fields", operation="queries_fields_get_v1",
-                )}
+                return {
+                    "success": False,
+                    "error": format_api_error(
+                        query_response,
+                        "Failed to query fields",
+                        operation="queries_fields_get_v1",
+                    ),
+                }
 
             field_ids = query_response.get("body", {}).get("resources", [])
             if not field_ids:
@@ -666,9 +760,14 @@ class CaseManagementModule(BaseModule):
             details_response = self.falcon.get_fields(ids=field_ids)
 
             if details_response["status_code"] != 200:
-                return {"success": False, "error": format_api_error(
-                    details_response, "Failed to get field details", operation="entities_fields_get_v1",
-                )}
+                return {
+                    "success": False,
+                    "error": format_api_error(
+                        details_response,
+                        "Failed to get field details",
+                        operation="entities_fields_get_v1",
+                    ),
+                }
 
             fields = details_response.get("body", {}).get("resources", [])
             return {"success": True, "fields": fields, "raw": fields}

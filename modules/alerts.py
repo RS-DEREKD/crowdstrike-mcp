@@ -7,27 +7,27 @@ Tools:
   ngsiem_alert_analysis  — Alias for alert_analysis (backward compat)
   update_alert_status    — Update alert status, comments, and tags
 
-Cross-module dependency: AlertsModule creates its own NGSIEM and Detects service
-instances using ``self.client.auth_object`` instead of depending on other modules.
+Cross-module dependency: AlertsModule creates its own NGSIEM service
+instance using ``self.client.auth_object`` instead of depending on other modules.
 They all share the same OAuth2 token.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import datetime, timedelta
-from typing import Annotated, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Annotated, Optional
 
 from falconpy import Alerts
 
-from modules.base import BaseModule
 from common.errors import format_api_error
+from modules.base import BaseModule
 from utils import (
-    format_text_response,
-    extract_detection_id,
-    parse_composite_id,
     PRODUCT_FQL_MAP,
-    PRODUCT_DISPLAY_NAMES,
+    extract_detection_id,
+    format_text_response,
+    parse_composite_id,
 )
 
 if TYPE_CHECKING:
@@ -36,15 +36,10 @@ if TYPE_CHECKING:
 # Optional imports for cross-module enrichment
 try:
     from falconpy import NGSIEM
+
     _NGSIEM_AVAILABLE = True
 except ImportError:
     _NGSIEM_AVAILABLE = False
-
-try:
-    from falconpy import Detects
-    _DETECTS_AVAILABLE = True
-except ImportError:
-    _DETECTS_AVAILABLE = False
 
 
 class AlertsModule(BaseModule):
@@ -54,21 +49,14 @@ class AlertsModule(BaseModule):
         super().__init__(client)
         self.alerts = Alerts(auth_object=self.client.auth_object)
 
-        # Create internal NGSIEM/Detects instances for enrichment
+        # Create internal NGSIEM instance for enrichment
         self._ngsiem = None
-        self._detects = None
 
         if _NGSIEM_AVAILABLE:
             try:
                 self._ngsiem = NGSIEM(auth_object=self.client.auth_object)
             except Exception as e:
                 self._log(f"NGSIEM enrichment not available: {e}")
-
-        if _DETECTS_AVAILABLE:
-            try:
-                self._detects = Detects(auth_object=self.client.auth_object)
-            except Exception as e:
-                self._log(f"Detects enrichment not available: {e}")
 
         self._log("Initialized")
 
@@ -79,21 +67,25 @@ class AlertsModule(BaseModule):
             return ALERT_FQL
 
         server.resource(
-            "falcon://fql/alerts", name="Alert FQL Syntax Guide",
+            "falcon://fql/alerts",
+            name="Alert FQL Syntax Guide",
             description="Documentation: Alert FQL filter syntax",
         )(_alert_fql)
         self.resources.append("falcon://fql/alerts")
 
     def register_tools(self, server: FastMCP) -> None:
         self._add_tool(
-            server, self.get_alerts, name="get_alerts",
+            server,
+            self.get_alerts,
+            name="get_alerts",
             description=(
-                "Retrieve CrowdStrike alerts across ALL detection types "
-                "(endpoint, NGSIEM, cloud security, identity, third-party) with filtering"
+                "Retrieve CrowdStrike alerts across ALL detection types (endpoint, NGSIEM, cloud security, identity, third-party) with filtering"
             ),
         )
         self._add_tool(
-            server, self.alert_analysis, name="alert_analysis",
+            server,
+            self.alert_analysis,
+            name="alert_analysis",
             description=(
                 "Retrieve detailed alert metadata and type-specific enrichment "
                 "by composite detection ID. Supports endpoint (ind), NGSIEM (ngsiem), "
@@ -101,18 +93,17 @@ class AlertsModule(BaseModule):
             ),
         )
         self._add_tool(
-            server, self.alert_analysis, name="ngsiem_alert_analysis",
-            description=(
-                "[ALIAS for alert_analysis] Retrieve detailed alert metadata and "
-                "related security events by composite detection ID."
-            ),
+            server,
+            self.alert_analysis,
+            name="ngsiem_alert_analysis",
+            description=("[ALIAS for alert_analysis] Retrieve detailed alert metadata and related security events by composite detection ID."),
         )
         self._add_tool(
-            server, self.update_alert_status, name="update_alert_status",
-            description=(
-                "Update CrowdStrike alert status after triage/investigation. "
-                "Supports status changes, comments for audit trail, and tags."
-            ),
+            server,
+            self.update_alert_status,
+            name="update_alert_status",
+            description=("Update CrowdStrike alert status after triage/investigation. Supports status changes, comments for audit trail, and tags."),
+            tier="write",
         )
 
     # ------------------------------------------------------------------
@@ -130,13 +121,18 @@ class AlertsModule(BaseModule):
     ) -> str:
         """Retrieve alerts with flexible filtering across all detection types."""
         result = self._get_alerts(
-            severity=severity, time_range=time_range, status=status,
-            pattern_name=pattern_name, product=product, max_results=max_results,
+            severity=severity,
+            time_range=time_range,
+            status=status,
+            pattern_name=pattern_name,
+            product=product,
+            max_results=max_results,
         )
 
         if not result.get("success"):
             return format_text_response(
-                f"Failed to retrieve alerts: {result.get('error')}", raw=True,
+                f"Failed to retrieve alerts: {result.get('error')}",
+                raw=True,
             )
 
         alerts_list = result["alerts"]
@@ -155,10 +151,7 @@ class AlertsModule(BaseModule):
                 tags_str = f" [{', '.join(a['tags'])}]" if a.get("tags") else ""
                 assigned = f" -> {a['assigned_to']}" if a.get("assigned_to") else ""
                 product_tag = f" ({a['product_name']})" if a.get("product_name") else ""
-                lines.append(
-                    f"{i}. [{a['severity']}] {a['name']}{product_tag} "
-                    f"(status: {a['status']}{assigned}{tags_str})"
-                )
+                lines.append(f"{i}. [{a['severity']}] {a['name']}{product_tag} (status: {a['status']}{assigned}{tags_str})")
                 lines.append(f"   ID: {a['composite_id']}")
                 lines.append(f"   Created: {a['created_timestamp']}")
                 if a.get("description"):
@@ -174,11 +167,12 @@ class AlertsModule(BaseModule):
     ) -> str:
         """Analyze an alert with type-specific enrichment."""
         detection_id = extract_detection_id(detection_id)
-        result = self._analyze_alert(detection_id, max_events)
+        result = await asyncio.to_thread(self._analyze_alert, detection_id, max_events)
 
         if not result.get("success"):
             return format_text_response(
-                f"Failed to analyze alert: {result.get('error', 'Unknown error')}", raw=True,
+                f"Failed to analyze alert: {result.get('error', 'Unknown error')}",
+                raw=True,
             )
 
         response_text = self._format_alert_analysis_response(result)
@@ -197,7 +191,8 @@ class AlertsModule(BaseModule):
 
         if not result.get("success"):
             return format_text_response(
-                f"Failed to update alerts: {result.get('error')}", raw=True,
+                f"Failed to update alerts: {result.get('error')}",
+                raw=True,
             )
 
         lines = [
@@ -229,12 +224,14 @@ class AlertsModule(BaseModule):
 
     # Alerts v2 API severity uses 10/20/30/40/50, not 1-5.
     _SEVERITY_MAP = {
-        "CRITICAL": 50, "HIGH": 40, "MEDIUM": 30,
-        "LOW": 20, "INFORMATIONAL": 10,
+        "CRITICAL": 50,
+        "HIGH": 40,
+        "MEDIUM": 30,
+        "LOW": 20,
+        "INFORMATIONAL": 10,
     }
 
-    def _get_alerts(self, severity="ALL", time_range="1d", status="all",
-                    pattern_name=None, product="all", max_results=50):
+    def _get_alerts(self, severity="ALL", time_range="1d", status="all", pattern_name=None, product="all", max_results=50):
         try:
             time_units = {"h": "hours", "d": "days"}
             unit = time_range[-1]
@@ -279,17 +276,16 @@ class AlertsModule(BaseModule):
                 return {"success": False, "error": format_api_error(response, "Failed to query alerts", operation="query_alerts_v2")}
 
             alert_ids = response.get("body", {}).get("resources", [])
-            total_available = (
-                response.get("body", {})
-                .get("meta", {})
-                .get("pagination", {})
-                .get("total", len(alert_ids))
-            )
+            total_available = response.get("body", {}).get("meta", {}).get("pagination", {}).get("total", len(alert_ids))
 
             if not alert_ids:
                 return {
-                    "success": True, "alerts": [], "count": 0,
-                    "total_available": 0, "filter": filter_query, "time_range": time_range,
+                    "success": True,
+                    "alerts": [],
+                    "count": 0,
+                    "total_available": 0,
+                    "filter": filter_query,
+                    "time_range": time_range,
                 }
 
             details_response = self.alerts.get_alerts_v2(composite_ids=alert_ids)
@@ -309,30 +305,29 @@ class AlertsModule(BaseModule):
                 else:
                     api_product_name = str(raw_product) if raw_product else ""
 
-                alert_summaries.append({
-                    "composite_id": composite_id,
-                    "name": a.get("name", "Unknown"),
-                    "severity": a.get("severity_name", "Unknown"),
-                    "severity_value": a.get("severity", 0),
-                    "status": a.get("status", "unknown"),
-                    "created_timestamp": a.get("created_timestamp", ""),
-                    "updated_timestamp": a.get("updated_timestamp", ""),
-                    "assigned_to": a.get("assigned_to_name", ""),
-                    "type": a.get("type", ""),
-                    "product": id_info["product_type"],
-                    "product_name": id_info["product_name"],
-                    "api_product": api_product_name,
-                    "tags": a.get("tags", []),
-                    "description": a.get("description", "")[:200],
-                })
+                alert_summaries.append(
+                    {
+                        "composite_id": composite_id,
+                        "name": a.get("name", "Unknown"),
+                        "severity": a.get("severity_name", "Unknown"),
+                        "severity_value": a.get("severity", 0),
+                        "status": a.get("status", "unknown"),
+                        "created_timestamp": a.get("created_timestamp", ""),
+                        "updated_timestamp": a.get("updated_timestamp", ""),
+                        "assigned_to": a.get("assigned_to_name", ""),
+                        "type": a.get("type", ""),
+                        "product": id_info["product_type"],
+                        "product_name": id_info["product_name"],
+                        "api_product": api_product_name,
+                        "tags": a.get("tags", []),
+                        "description": a.get("description", "")[:200],
+                    }
+                )
 
             # Client-side post-filter by pattern_name (not supported in FQL).
             if pattern_name:
                 pattern_lower = pattern_name.lower()
-                alert_summaries = [
-                    a for a in alert_summaries
-                    if pattern_lower in a["name"].lower()
-                ]
+                alert_summaries = [a for a in alert_summaries if pattern_lower in a["name"].lower()]
 
             # Trim to requested max_results after any post-filtering.
             alert_summaries = alert_summaries[:max_results]
@@ -406,10 +401,7 @@ class AlertsModule(BaseModule):
                     events = result.get("events", [])
                     if events:
                         indicator_event = events[0]
-                        detection_id_from_event = (
-                            indicator_event.get("Ngsiem.detection.id")
-                            or indicator_event.get("detection.id")
-                        )
+                        detection_id_from_event = indicator_event.get("Ngsiem.detection.id") or indicator_event.get("detection.id")
                         self._log(f"Found indicator event, detection ID: {detection_id_from_event}")
                         break
 
@@ -473,11 +465,12 @@ class AlertsModule(BaseModule):
             search_id = response.get("resources", {}).get("id")
 
             start = _time.time()
-            timeout = 120
+            timeout = 60
 
             while _time.time() - start < timeout:
                 status_response = self._ngsiem.get_search_status(
-                    repository="search-all", search_id=search_id,
+                    repository="search-all",
+                    search_id=search_id,
                 )
 
                 if status_response["status_code"] != 200:
@@ -511,40 +504,32 @@ class AlertsModule(BaseModule):
             return {"success": False, "error": f"Query execution error: {str(e)}"}
 
     def _get_behaviors_for_alert(self, alert):
-        """Get endpoint behaviors for an alert using internal Detects client."""
-        if not self._detects:
-            return {"success": False, "error": "Detects enrichment not available"}
+        """Get endpoint context via NGSIEM raw telemetry (replaces deprecated Detects API).
 
-        composite_id = alert.get("composite_id", "")
-        if not composite_id:
-            return {"success": False, "error": "No composite_id in alert data"}
+        The Detects API was decommissioned in March 2026. This method now queries
+        NGSIEM for raw EDR events (ProcessRollup2) around the alert's device.
+        """
+        if not self._ngsiem:
+            return {"success": False, "error": "NGSIEM enrichment not available — cannot enrich endpoint alert"}
+
+        device_id = alert.get("device", {}).get("device_id", "")
+        if not device_id:
+            return {"success": False, "error": "No device_id in alert — cannot query endpoint telemetry"}
+
+        query = f'#event_simpleName=ProcessRollup2 aid="{device_id}" | head(20)'
 
         try:
-            response = self._detects.get_detect_summaries(ids=[composite_id])
-            if response["status_code"] == 200:
-                resources = response.get("body", {}).get("resources", [])
-                if resources:
-                    all_behaviors = []
-                    for detection in resources:
-                        all_behaviors.extend(detection.get("behaviors", []))
-                    return {"success": True, "behaviors": all_behaviors}
+            result = self._execute_ngsiem_query(query, start_time="24h", max_results=20)
+            if not result.get("success"):
+                return {
+                    "success": False,
+                    "error": f"NGSIEM endpoint enrichment failed: {result.get('error', 'Unknown')}",
+                }
 
-            # Fallback: extract detect ID from composite format
-            parts = composite_id.split(":")
-            if len(parts) >= 4 and parts[1] == "ind":
-                detect_id = parts[-1]
-                response = self._detects.get_detect_summaries(ids=[detect_id])
-                if response["status_code"] == 200:
-                    resources = response.get("body", {}).get("resources", [])
-                    if resources:
-                        all_behaviors = []
-                        for detection in resources:
-                            all_behaviors.extend(detection.get("behaviors", []))
-                        return {"success": True, "behaviors": all_behaviors}
-
-            return {"success": False, "error": f"Could not retrieve behaviors for alert {composite_id}"}
+            events = result.get("events", [])
+            return {"success": True, "behaviors": events}
         except Exception as e:
-            return {"success": False, "error": f"Error getting behaviors: {str(e)}"}
+            return {"success": False, "error": f"NGSIEM endpoint enrichment error: {str(e)}"}
 
     def _analyze_alert(self, detection_id, max_events=10):
         """Analyze an alert with type-specific enrichment routing."""
@@ -571,48 +556,37 @@ class AlertsModule(BaseModule):
         if product_type == "ngsiem" and self._ngsiem:
             result["enrichment_type"] = "ngsiem_events"
             events_result = self._get_related_ngsiem_events(
-                detection_id, time_range="7d", max_events=max_events,
+                detection_id,
+                time_range="7d",
+                max_events=max_events,
             )
             if events_result.get("success"):
                 result["events"] = events_result.get("events", [])
                 result["events_matched"] = events_result.get("events_matched", 0)
                 result["query_used"] = events_result.get("query_used", "")
             else:
-                result["enrichment_note"] = (
-                    f"NGSIEM event retrieval failed: {events_result.get('error', 'Unknown')}"
-                )
+                result["enrichment_note"] = f"NGSIEM event retrieval failed: {events_result.get('error', 'Unknown')}"
 
         elif product_type == "cloud_security":
             result["enrichment_type"] = "cloud_security_raw"
             result["enrichment_note"] = (
-                "Cloud security alert — full raw alert payload included for inspection. "
-                "Automated cloud event enrichment will be added in a future update."
+                "Cloud security alert — full raw alert payload included for inspection. Automated cloud event enrichment will be added in a future update."
             )
 
         elif product_type == "endpoint":
             result["enrichment_type"] = "endpoint_behaviors"
-            if self._detects:
-                try:
-                    behaviors_result = self._get_behaviors_for_alert(alert)
-                    if behaviors_result.get("success"):
-                        result["behaviors"] = behaviors_result.get("behaviors", [])
-                    else:
-                        result["enrichment_note"] = (
-                            f"Endpoint behavior retrieval failed: {behaviors_result.get('error', 'Unknown')}"
-                        )
-                except Exception as e:
-                    result["enrichment_note"] = f"Endpoint enrichment error: {str(e)}"
-            else:
-                result["enrichment_note"] = (
-                    "Endpoint behavior enrichment available but Detects API handler not initialized. "
-                    "Ensure falcon_client_id has Detects Read scope."
-                )
+            try:
+                behaviors_result = self._get_behaviors_for_alert(alert)
+                if behaviors_result.get("success"):
+                    result["behaviors"] = behaviors_result.get("behaviors", [])
+                else:
+                    result["enrichment_note"] = f"Endpoint behavior retrieval failed: {behaviors_result.get('error', 'Unknown')}"
+            except Exception as e:
+                result["enrichment_note"] = f"Endpoint enrichment error: {str(e)}"
 
         elif product_type == "identity":
             result["enrichment_type"] = "identity_metadata_only"
-            result["enrichment_note"] = (
-                "Identity Protection alert — enrichment via GraphQL API planned for future update."
-            )
+            result["enrichment_note"] = "Identity Protection alert — enrichment via GraphQL API planned for future update."
 
         elif product_type == "thirdparty":
             result["enrichment_type"] = "thirdparty_metadata_only"
@@ -625,10 +599,7 @@ class AlertsModule(BaseModule):
 
         else:
             result["enrichment_type"] = "metadata_only"
-            result["enrichment_note"] = (
-                f"Unknown product type '{id_info['product_prefix']}' — "
-                "returning alert metadata only."
-            )
+            result["enrichment_note"] = f"Unknown product type '{id_info['product_prefix']}' — returning alert metadata only."
 
         return result
 
@@ -680,10 +651,7 @@ class AlertsModule(BaseModule):
             parts.append("### MITRE ATT&CK Mapping")
             for behavior in behaviors[:5]:
                 if isinstance(behavior, dict):
-                    parts.append(
-                        f"- **{behavior.get('tactic', 'N/A')}**: "
-                        f"{behavior.get('technique', 'N/A')}"
-                    )
+                    parts.append(f"- **{behavior.get('tactic', 'N/A')}**: {behavior.get('technique', 'N/A')}")
             parts.append("")
 
         device = alert.get("device")

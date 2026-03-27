@@ -8,10 +8,10 @@ Tools:
 
 from __future__ import annotations
 
-from typing import Annotated, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Annotated, Optional
 
-from modules.base import BaseModule
 from common.errors import format_api_error
+from modules.base import BaseModule
 from utils import format_text_response
 
 if TYPE_CHECKING:
@@ -19,6 +19,7 @@ if TYPE_CHECKING:
 
 try:
     from falconpy import CSPMRegistration
+
     CSPM_AVAILABLE = True
 except ImportError:
     CSPM_AVAILABLE = False
@@ -30,27 +31,22 @@ class CloudRegistrationModule(BaseModule):
     def __init__(self, client):
         super().__init__(client)
         if not CSPM_AVAILABLE:
-            raise ImportError(
-                "falconpy.CSPMRegistration not available. "
-                "Ensure crowdstrike-falconpy >= 1.6.0 is installed."
-            )
+            raise ImportError("falconpy.CSPMRegistration not available. Ensure crowdstrike-falconpy >= 1.6.0 is installed.")
         self.cspm = CSPMRegistration(auth_object=self.client.auth_object)
         self._log("Initialized")
 
     def register_tools(self, server: FastMCP) -> None:
         self._add_tool(
-            server, self.cloud_list_accounts, name="cloud_list_accounts",
-            description=(
-                "List registered cloud accounts across AWS and Azure. "
-                "Shows account status, CSPM/NGSIEM enablement, and features."
-            ),
+            server,
+            self.cloud_list_accounts,
+            name="cloud_list_accounts",
+            description=("List registered cloud accounts across AWS and Azure. Shows account status, CSPM/NGSIEM enablement, and features."),
         )
         self._add_tool(
-            server, self.cloud_policy_settings, name="cloud_policy_settings",
-            description=(
-                "Get CSPM policy settings for a cloud platform. "
-                "Shows security policies, compliance benchmarks, and remediability."
-            ),
+            server,
+            self.cloud_policy_settings,
+            name="cloud_policy_settings",
+            description=("Get CSPM policy settings for a cloud platform. Shows security policies, compliance benchmarks, and remediability."),
         )
 
     # ------------------------------------------------------------------
@@ -66,7 +62,8 @@ class CloudRegistrationModule(BaseModule):
 
         if not result.get("success"):
             return format_text_response(
-                f"Failed to list cloud accounts: {result.get('error')}", raw=True,
+                f"Failed to list cloud accounts: {result.get('error')}",
+                raw=True,
             )
 
         accounts = result["accounts"]
@@ -116,7 +113,8 @@ class CloudRegistrationModule(BaseModule):
 
         if not result.get("success"):
             return format_text_response(
-                f"Failed to get policy settings: {result.get('error')}", raw=True,
+                f"Failed to get policy settings: {result.get('error')}",
+                raw=True,
             )
 
         lines = [
@@ -214,19 +212,21 @@ class CloudRegistrationModule(BaseModule):
 
             summaries = []
             for p in policies:
-                summaries.append({
-                    "policy_id": p.get("policy_id", ""),
-                    "name": p.get("name", ""),
-                    "cloud_provider": p.get("cloud_provider", ""),
-                    "cloud_service": p.get("cloud_service_friendly", p.get("cloud_service", "")),
-                    "cloud_asset_type": p.get("cloud_asset_type", ""),
-                    "default_severity": p.get("default_severity", ""),
-                    "policy_type": p.get("policy_type", ""),
-                    "is_remediable": p.get("is_remediable", False),
-                    "nist_benchmark": p.get("nist_benchmark", ""),
-                    "pci_benchmark": p.get("pci_benchmark", ""),
-                    "cis_benchmark": p.get("cis_benchmark", ""),
-                })
+                summaries.append(
+                    {
+                        "policy_id": p.get("policy_id", ""),
+                        "name": p.get("name", ""),
+                        "cloud_provider": p.get("cloud_provider", ""),
+                        "cloud_service": p.get("cloud_service_friendly", p.get("cloud_service", "")),
+                        "cloud_asset_type": p.get("cloud_asset_type", ""),
+                        "default_severity": p.get("default_severity", ""),
+                        "policy_type": p.get("policy_type", ""),
+                        "is_remediable": p.get("is_remediable", False),
+                        "nist_benchmark": p.get("nist_benchmark", ""),
+                        "pci_benchmark": p.get("pci_benchmark", ""),
+                        "cis_benchmark": p.get("cis_benchmark", ""),
+                    }
+                )
 
             services = {}
             for p in summaries:
