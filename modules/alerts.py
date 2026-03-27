@@ -7,8 +7,8 @@ Tools:
   ngsiem_alert_analysis  — Alias for alert_analysis (backward compat)
   update_alert_status    — Update alert status, comments, and tags
 
-Cross-module dependency: AlertsModule creates its own NGSIEM and Detects service
-instances using ``self.client.auth_object`` instead of depending on other modules.
+Cross-module dependency: AlertsModule creates its own NGSIEM service
+instance using ``self.client.auth_object`` instead of depending on other modules.
 They all share the same OAuth2 token.
 """
 
@@ -41,11 +41,6 @@ try:
 except ImportError:
     _NGSIEM_AVAILABLE = False
 
-try:
-    from falconpy import Detects
-    _DETECTS_AVAILABLE = True
-except ImportError:
-    _DETECTS_AVAILABLE = False
 
 
 class AlertsModule(BaseModule):
@@ -55,21 +50,14 @@ class AlertsModule(BaseModule):
         super().__init__(client)
         self.alerts = Alerts(auth_object=self.client.auth_object)
 
-        # Create internal NGSIEM/Detects instances for enrichment
+        # Create internal NGSIEM instance for enrichment
         self._ngsiem = None
-        self._detects = None
 
         if _NGSIEM_AVAILABLE:
             try:
                 self._ngsiem = NGSIEM(auth_object=self.client.auth_object)
             except Exception as e:
                 self._log(f"NGSIEM enrichment not available: {e}")
-
-        if _DETECTS_AVAILABLE:
-            try:
-                self._detects = Detects(auth_object=self.client.auth_object)
-            except Exception as e:
-                self._log(f"Detects enrichment not available: {e}")
 
         self._log("Initialized")
 

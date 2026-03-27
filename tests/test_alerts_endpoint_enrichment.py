@@ -15,8 +15,7 @@ def alerts_module(mock_client):
     """Create AlertsModule with mocked APIs."""
     with patch("modules.alerts.Alerts") as MockAlerts, \
          patch("modules.alerts._NGSIEM_AVAILABLE", True), \
-         patch("modules.alerts.NGSIEM") as MockNGSIEM, \
-         patch("modules.alerts._DETECTS_AVAILABLE", False):
+         patch("modules.alerts.NGSIEM") as MockNGSIEM:
         mock_ngsiem_instance = MagicMock()
         MockNGSIEM.return_value = mock_ngsiem_instance
         module = __import__("modules.alerts", fromlist=["AlertsModule"]).AlertsModule(mock_client)
@@ -96,4 +95,4 @@ class TestEndpointEnrichmentViaNGSIEM:
 
     def test_detects_api_is_not_initialized(self, alerts_module):
         """Confirm the Detects client is not used."""
-        assert alerts_module._detects is None
+        assert not hasattr(alerts_module, '_detects') or alerts_module._detects is None
