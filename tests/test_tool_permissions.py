@@ -75,3 +75,39 @@ class TestToolTierGating:
     def test_allow_writes_defaults_to_false(self, base_module):
         """BaseModule.allow_writes defaults to False."""
         assert base_module.allow_writes is False
+
+
+class TestRegistryAllowWrites:
+    """Verify registry passes allow_writes to module instances."""
+
+    def test_allow_writes_false_by_default(self, mock_client):
+        """Modules get allow_writes=False when not specified."""
+        with patch("registry.discover_module_classes") as mock_discover:
+            from modules.base import BaseModule
+
+            class FakeModule(BaseModule):
+                def register_tools(self, server):
+                    pass
+
+            mock_discover.return_value = [FakeModule]
+
+            from registry import get_available_modules
+            modules = get_available_modules(mock_client, allow_writes=False)
+            assert len(modules) == 1
+            assert modules[0].allow_writes is False
+
+    def test_allow_writes_true_propagates(self, mock_client):
+        """Modules get allow_writes=True when specified."""
+        with patch("registry.discover_module_classes") as mock_discover:
+            from modules.base import BaseModule
+
+            class FakeModule(BaseModule):
+                def register_tools(self, server):
+                    pass
+
+            mock_discover.return_value = [FakeModule]
+
+            from registry import get_available_modules
+            modules = get_available_modules(mock_client, allow_writes=True)
+            assert len(modules) == 1
+            assert modules[0].allow_writes is True

@@ -57,6 +57,7 @@ def discover_module_classes() -> list[type[BaseModule]]:
 def get_available_modules(
     client: FalconClient,
     enabled: set[str] | None = None,
+    allow_writes: bool = False,
 ) -> list[BaseModule]:
     """Discover, filter, and instantiate modules.
 
@@ -64,6 +65,8 @@ def get_available_modules(
         client: Shared FalconClient for credential access.
         enabled: Optional set of module names to load (e.g. ``{"ngsiem", "alerts"}``).
                  If ``None``, all discovered modules are loaded.
+        allow_writes: Whether to enable write-tier tools on each module.
+                      Defaults to ``False`` (read-only mode).
 
     Returns:
         List of instantiated module objects.
@@ -80,6 +83,7 @@ def get_available_modules(
 
         try:
             instance = cls(client)
+            instance.allow_writes = allow_writes
             instances.append(instance)
             print(f"[registry] Loaded {cls.__name__}", file=sys.stderr)
         except Exception as exc:
