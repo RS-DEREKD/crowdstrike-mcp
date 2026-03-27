@@ -1,0 +1,10 @@
+line-length = 155
+target-version = "py311"
+exclude = ["mcp-debug"]
+
+[lint]
+select = ["E", "F", "I"]
+ignore = ["E402"]  # module-level imports not at top (used for sys.path manipulation)
+
+[format]
+quote-style = "double"
