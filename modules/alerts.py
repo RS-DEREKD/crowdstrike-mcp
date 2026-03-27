@@ -14,6 +14,7 @@ They all share the same OAuth2 token.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import datetime, timedelta
 from typing import Annotated, Optional, TYPE_CHECKING
@@ -174,7 +175,7 @@ class AlertsModule(BaseModule):
     ) -> str:
         """Analyze an alert with type-specific enrichment."""
         detection_id = extract_detection_id(detection_id)
-        result = self._analyze_alert(detection_id, max_events)
+        result = await asyncio.to_thread(self._analyze_alert, detection_id, max_events)
 
         if not result.get("success"):
             return format_text_response(
@@ -473,7 +474,7 @@ class AlertsModule(BaseModule):
             search_id = response.get("resources", {}).get("id")
 
             start = _time.time()
-            timeout = 120
+            timeout = 60
 
             while _time.time() - start < timeout:
                 status_response = self._ngsiem.get_search_status(
