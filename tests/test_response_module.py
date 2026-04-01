@@ -60,7 +60,7 @@ class TestHostContainPreFlight:
 
     def test_preview_returns_device_details(self, response_module):
         _mock_device_lookup(response_module.hosts, MOCK_DEVICE)
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             response_module.host_contain(
                 device_id="abc123",
                 reason="Cryptominer confirmed",
@@ -74,7 +74,7 @@ class TestHostContainPreFlight:
 
     def test_already_contained_returns_noop(self, response_module):
         _mock_device_lookup(response_module.hosts, MOCK_CONTAINED_DEVICE)
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             response_module.host_contain(
                 device_id="abc123",
                 reason="Cryptominer confirmed",
@@ -85,7 +85,7 @@ class TestHostContainPreFlight:
 
     def test_excluded_tag_blocks_containment(self, response_module):
         _mock_device_lookup(response_module.hosts, MOCK_DNC_DEVICE)
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             response_module.host_contain(
                 device_id="abc123",
                 reason="Test",
@@ -99,7 +99,7 @@ class TestHostContainPreFlight:
             "status_code": 200,
             "body": {"resources": []},
         }
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             response_module.host_contain(
                 device_id="nonexistent",
                 reason="Test",
@@ -118,7 +118,7 @@ class TestHostContainExecution:
             "status_code": 202,
             "body": {"resources": [{"id": "abc123"}]},
         }
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             response_module.host_contain(
                 device_id="abc123",
                 reason="Cryptominer confirmed",
@@ -136,7 +136,7 @@ class TestHostContainExecution:
             "status_code": 403,
             "body": {"errors": [{"message": "Insufficient permissions"}]},
         }
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             response_module.host_contain(
                 device_id="abc123",
                 reason="Test",
@@ -151,7 +151,7 @@ class TestHostLiftContainment:
 
     def test_preview_shows_contained_device(self, response_module):
         _mock_device_lookup(response_module.hosts, MOCK_CONTAINED_DEVICE)
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             response_module.host_lift_containment(
                 device_id="abc123",
                 reason="Investigation complete",
@@ -163,7 +163,7 @@ class TestHostLiftContainment:
 
     def test_not_contained_returns_noop(self, response_module):
         _mock_device_lookup(response_module.hosts, MOCK_DEVICE)
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             response_module.host_lift_containment(
                 device_id="abc123",
                 reason="Test",
@@ -178,7 +178,7 @@ class TestHostLiftContainment:
             "status_code": 202,
             "body": {"resources": [{"id": "abc123"}]},
         }
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             response_module.host_lift_containment(
                 device_id="abc123",
                 reason="Investigation complete",
@@ -200,7 +200,7 @@ class TestContainmentAuditLog:
             "status_code": 202,
             "body": {"resources": [{"id": "abc123"}]},
         }
-        asyncio.get_event_loop().run_until_complete(
+        asyncio.run(
             response_module.host_contain(
                 device_id="abc123",
                 reason="Cryptominer confirmed",

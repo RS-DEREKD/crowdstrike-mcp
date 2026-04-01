@@ -40,7 +40,7 @@ class TestSpotlightSupportedEvaluations:
                 ]
             },
         }
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             spotlight_module.spotlight_supported_evaluations()
         )
         assert "Windows Kernel Vulnerability" in result
@@ -51,7 +51,7 @@ class TestSpotlightSupportedEvaluations:
             "status_code": 200,
             "body": {"resources": []},
         }
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             spotlight_module.spotlight_supported_evaluations()
         )
         assert "no evaluation" in result.lower() or "0" in result
@@ -61,7 +61,7 @@ class TestSpotlightSupportedEvaluations:
             "status_code": 403,
             "body": {"errors": [{"message": "Forbidden"}]},
         }
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             spotlight_module.spotlight_supported_evaluations()
         )
         assert "failed" in result.lower()
@@ -71,7 +71,7 @@ class TestSpotlightSupportedEvaluations:
             "status_code": 200,
             "body": {"resources": []},
         }
-        asyncio.get_event_loop().run_until_complete(
+        asyncio.run(
             spotlight_module.spotlight_supported_evaluations(filter="platform:'Windows'")
         )
         spotlight_module.falcon.combined_supported_evaluation.assert_called_once_with(

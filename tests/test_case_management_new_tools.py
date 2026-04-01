@@ -34,7 +34,7 @@ class TestCaseQueryAccessTags:
                 "meta": {"pagination": {"total": 2}},
             },
         }
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             case_module.case_query_access_tags()
         )
         assert "tag-001" in result
@@ -48,7 +48,7 @@ class TestCaseQueryAccessTags:
                 "meta": {"pagination": {"total": 0}},
             },
         }
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             case_module.case_query_access_tags()
         )
         assert "no access tags" in result.lower() or "0" in result
@@ -58,7 +58,7 @@ class TestCaseQueryAccessTags:
             "status_code": 403,
             "body": {"errors": [{"message": "Forbidden"}]},
         }
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             case_module.case_query_access_tags()
         )
         assert "failed" in result.lower()
@@ -76,7 +76,7 @@ class TestCaseGetAccessTags:
                 ]
             },
         }
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             case_module.case_get_access_tags(tag_ids=["tag-001"])
         )
         assert "SOC-Team" in result
@@ -87,7 +87,7 @@ class TestCaseGetAccessTags:
             "status_code": 404,
             "body": {"errors": [{"message": "Not found"}]},
         }
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             case_module.case_get_access_tags(tag_ids=["bad-id"])
         )
         assert "failed" in result.lower()
@@ -105,7 +105,7 @@ class TestCaseAggregateAccessTags:
                 ]
             },
         }
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             case_module.case_aggregate_access_tags(
                 date_ranges=[],
                 field="name",
@@ -121,7 +121,7 @@ class TestCaseAggregateAccessTags:
             "status_code": 500,
             "body": {"errors": [{"message": "Internal error"}]},
         }
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             case_module.case_aggregate_access_tags(
                 date_ranges=[],
                 field="name",
@@ -150,7 +150,7 @@ class TestCaseGetRtrFileMetadata:
                 ]
             },
         }
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             case_module.case_get_rtr_file_metadata(case_id="case-123")
         )
         assert "suspicious.exe" in result
@@ -161,7 +161,7 @@ class TestCaseGetRtrFileMetadata:
             "status_code": 200,
             "body": {"resources": []},
         }
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             case_module.case_get_rtr_file_metadata(case_id="case-123")
         )
         assert "no rtr" in result.lower() or "0" in result
@@ -171,7 +171,7 @@ class TestCaseGetRtrFileMetadata:
             "status_code": 403,
             "body": {"errors": [{"message": "Forbidden"}]},
         }
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             case_module.case_get_rtr_file_metadata(case_id="case-123")
         )
         assert "failed" in result.lower()
@@ -193,7 +193,7 @@ class TestCaseGetRtrRecentFiles:
                 ]
             },
         }
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             case_module.case_get_rtr_recent_files(case_id="case-123")
         )
         assert "collected.log" in result
@@ -203,7 +203,7 @@ class TestCaseGetRtrRecentFiles:
             "status_code": 500,
             "body": {"errors": [{"message": "Internal error"}]},
         }
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             case_module.case_get_rtr_recent_files(case_id="case-123")
         )
         assert "failed" in result.lower()

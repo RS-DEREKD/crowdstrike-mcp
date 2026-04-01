@@ -47,7 +47,7 @@ class TestCorrelationListTemplates:
                 "meta": {"pagination": {"total": 2}},
             },
         }
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             correlation_module.correlation_list_templates()
         )
         assert "template-uuid-001" in result
@@ -61,7 +61,7 @@ class TestCorrelationListTemplates:
                 "meta": {"pagination": {"total": 0}},
             },
         }
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             correlation_module.correlation_list_templates()
         )
         assert "no templates" in result.lower() or "0" in result
@@ -71,7 +71,7 @@ class TestCorrelationListTemplates:
             "status_code": 403,
             "body": {"errors": [{"message": "Forbidden"}]},
         }
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             correlation_module.correlation_list_templates()
         )
         assert "failed" in result.lower()
@@ -85,7 +85,7 @@ class TestCorrelationGetTemplate:
             "status_code": 200,
             "body": {"resources": [MOCK_TEMPLATE]},
         }
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             correlation_module.correlation_get_template(
                 template_ids=["template-uuid-001"]
             )
@@ -99,7 +99,7 @@ class TestCorrelationGetTemplate:
             "status_code": 200,
             "body": {"resources": []},
         }
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             correlation_module.correlation_get_template(
                 template_ids=["bad-id"]
             )
@@ -111,7 +111,7 @@ class TestCorrelationGetTemplate:
             "status_code": 500,
             "body": {"errors": [{"message": "Internal error"}]},
         }
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             correlation_module.correlation_get_template(
                 template_ids=["template-uuid-001"]
             )
