@@ -119,7 +119,7 @@ class TestDryRunMode:
 
     def test_dry_run_returns_yaml(self, correlation_module):
         _mock_get_rules(correlation_module.falcon, MOCK_RULE)
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             correlation_module.correlation_import_to_iac(
                 rule_id="rule-uuid-123",
                 vendor="aws",
@@ -133,7 +133,7 @@ class TestDryRunMode:
     def test_dry_run_does_not_write_file(self, correlation_module, tmp_path):
         correlation_module._detections_repo_path = str(tmp_path)
         _mock_get_rules(correlation_module.falcon, MOCK_RULE)
-        asyncio.get_event_loop().run_until_complete(
+        asyncio.run(
             correlation_module.correlation_import_to_iac(
                 rule_id="rule-uuid-123",
                 vendor="aws",
@@ -153,7 +153,7 @@ class TestFileWrite:
         (tmp_path / "resources" / "detections" / "aws").mkdir(parents=True)
 
         _mock_get_rules(correlation_module.falcon, MOCK_RULE)
-        asyncio.get_event_loop().run_until_complete(
+        asyncio.run(
             correlation_module.correlation_import_to_iac(
                 rule_id="rule-uuid-123",
                 vendor="aws",
@@ -173,7 +173,7 @@ class TestFileWrite:
         (target_dir / "aws_-_cloudtrail_-_suspicious_iam_activity.yaml").write_text("existing")
 
         _mock_get_rules(correlation_module.falcon, MOCK_RULE)
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             correlation_module.correlation_import_to_iac(
                 rule_id="rule-uuid-123",
                 vendor="aws",
@@ -185,7 +185,7 @@ class TestFileWrite:
     def test_falls_back_to_dry_run_when_path_not_writable(self, correlation_module):
         correlation_module._detections_repo_path = None
         _mock_get_rules(correlation_module.falcon, MOCK_RULE)
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             correlation_module.correlation_import_to_iac(
                 rule_id="rule-uuid-123",
                 vendor="aws",
@@ -202,7 +202,7 @@ class TestVendorValidation:
 
     def test_rejects_invalid_vendor(self, correlation_module):
         _mock_get_rules(correlation_module.falcon, MOCK_RULE)
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             correlation_module.correlation_import_to_iac(
                 rule_id="rule-uuid-123",
                 vendor="invalid_vendor",

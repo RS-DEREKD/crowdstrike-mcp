@@ -6,6 +6,8 @@ Tools:
   correlation_get_rule     — Get full rule details
   correlation_update_rule  — Enable/disable rules with audit comment
   correlation_export_rule  — Export rule in structured format
+  correlation_list_templates — List available rule templates
+  correlation_get_template   — Get full template details
 """
 
 from __future__ import annotations
@@ -107,6 +109,18 @@ class CorrelationModule(BaseModule):
                 "Export a console-created correlation rule to an IaC YAML template in the detections repo. Use dry_run=True to preview without writing."
             ),
             tier="write",
+        )
+        self._add_tool(
+            server,
+            self.correlation_list_templates,
+            name="correlation_list_templates",
+            description="List available CrowdStrike correlation rule templates with optional filtering. Templates are pre-built detection patterns.",
+        )
+        self._add_tool(
+            server,
+            self.correlation_get_template,
+            name="correlation_get_template",
+            description="Get full template details by ID, including CQL logic and configuration.",
         )
 
     # ------------------------------------------------------------------
@@ -467,6 +481,96 @@ class CorrelationModule(BaseModule):
             "4. `python scripts/resource_deploy.py apply`",
         ]
         return format_text_response("\n".join(lines), raw=True)
+
+    async def correlation_list_templates(
+        self,
+        filter: Annotated[Optional[str], "FQL filter expression for templates"] = None,
+        limit: Annotated[int, "Maximum templates to return (default: 100)"] = 100,
+        offset: Annotated[int, "Pagination offset (default: 0)"] = 0,
+    ) -> str:
+        """List available correlation rule templates."""
+        try:
+            kwargs = {"limit": min(limit, 500), "offset": offset}
+            if filter:
+                kwargs["filter"] = filter
+
+            if self._use_harness:
+                response = self.falcon.command("queries_templates_get_v1Mixin0", **kwargs)
+            else:
+                response = self.falcon.query_templates(**kwargs)
+
+            if response["status_code"] != 200:
+                return format_text_response(
+                    f"Failed to list templates: {format_api_error(response, 'Failed to query templates', operation='queries_templates_get_v1Mixin0')}",
+                    raw=True,
+                )
+
+            template_ids = response.get("body", {}).get("resources", [])
+            total = response.get("body", {}).get("meta", {}).get("pagination", {}).get("total", len(template_ids))
+
+            lines = [f"Correlation Rule Templates: {len(template_ids)} returned (of {total} total)", ""]
+
+            if not template_ids:
+                lines.append("No templates found.")
+            else:
+                for i, tid in enumerate(template_ids, 1):
+                    lines.append(f"{i}. {tid}")
+
+            return format_text_response("\n".join(lines), raw=True)
+        except Exception as e:
+            return format_text_response(f"Failed to list templates: {e}", raw=True)
+
+    async def correlation_get_template(
+        self,
+        template_ids: Annotated[list[str], "List of template IDs to retrieve"],
+    ) -> str:
+        """Get full details for correlation rule templates."""
+        try:
+            if self._use_harness:
+                response = self.falcon.command("entities_templates_get_v1Mixin0", ids=template_ids)
+            else:
+                response = self.falcon.get_templates(ids=template_ids)
+
+            if response["status_code"] != 200:
+                err = format_api_error(response, "Failed to get template details", operation="entities_templates_get_v1Mixin0")
+                return format_text_response(f"Failed to get templates: {err}", raw=True)
+
+            resources = response.get("body", {}).get("resources", [])
+
+            if not resources:
+                return format_text_response(
+                    f"No templates found for IDs: {template_ids}",
+                    raw=True,
+                )
+
+            lines = [f"Correlation Rule Template Details ({len(resources)} templates)", ""]
+
+            for template in resources:
+                lines.append(f"### {template.get('name', 'Unknown')}")
+                lines.append(f"- ID: {template.get('id', 'N/A')}")
+                lines.append(f"- Severity: {template.get('severity', 'N/A')}")
+                if template.get("description"):
+                    lines.append(f"- Description: {template['description']}")
+                lines.append(f"- Created: {template.get('created_on', 'N/A')}")
+                lines.append(f"- Updated: {template.get('updated_on', 'N/A')}")
+
+                search = template.get("search", {})
+                if search and search.get("filter"):
+                    lines.append("\n**CQL Filter:**")
+                    lines.append("```")
+                    lines.append(search["filter"])
+                    lines.append("```")
+
+                lines.append("")
+                lines.append("**Full Template JSON:**")
+                lines.append("```json")
+                lines.append(json.dumps(template, indent=2, default=str))
+                lines.append("```")
+                lines.append("")
+
+            return format_text_response("\n".join(lines), raw=True)
+        except Exception as e:
+            return format_text_response(f"Failed to get templates: {e}", raw=True)
 
     # ------------------------------------------------------------------
     # IaC template conversion helpers

@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 # We patch these so no real auth is required.
 _FALCONPY_PATCHES = [
     "modules.alerts.Alerts",
+    "modules.cao_hunting.CAOHunting",
     "modules.case_management.CaseManagement",
     "modules.cloud_registration.CSPMRegistration",
     "modules.cloud_security.CloudSecurity",
@@ -21,6 +22,7 @@ _FALCONPY_PATCHES = [
     "modules.hosts.Hosts",
     "modules.ngsiem.NGSIEM",
     "modules.response.Hosts",
+    "modules.spotlight.SpotlightEvaluationLogic",
 ]
 
 # Expected tool sets — update these when adding/removing tools
@@ -38,12 +40,25 @@ EXPECTED_READ_TOOLS = {
     "case_query",
     "case_get",
     "case_get_fields",
+    "cao_search_queries",
+    "cao_get_queries",
+    "cao_search_guides",
+    "cao_get_guides",
+    "cao_aggregate",
     "cloud_list_accounts",
     "cloud_policy_settings",
     "cloud_get_risks",
     "cloud_get_iom_detections",
     "cloud_query_assets",
     "cloud_compliance_by_account",
+    "case_query_access_tags",
+    "case_get_access_tags",
+    "case_aggregate_access_tags",
+    "case_get_rtr_file_metadata",
+    "case_get_rtr_recent_files",
+    "correlation_list_templates",
+    "correlation_get_template",
+    "spotlight_supported_evaluations",
 }
 
 EXPECTED_WRITE_TOOLS = {
@@ -67,6 +82,7 @@ def _patch_falconpy():
     """Patch all FalconPy service classes to MagicMock so no real auth is needed."""
     with (
         patch.multiple("modules.alerts", Alerts=MagicMock()),
+        patch.multiple("modules.cao_hunting", CAOHunting=MagicMock()),
         patch.multiple("modules.case_management", CaseManagement=MagicMock()),
         patch.multiple("modules.cloud_registration", CSPMRegistration=MagicMock()),
         patch.multiple("modules.cloud_security", CloudSecurity=MagicMock(), CloudSecurityDetections=MagicMock(), CloudSecurityAssets=MagicMock()),
@@ -74,6 +90,7 @@ def _patch_falconpy():
         patch.multiple("modules.hosts", Hosts=MagicMock()),
         patch.multiple("modules.ngsiem", NGSIEM=MagicMock()),
         patch.multiple("modules.response", Hosts=MagicMock()),
+        patch.multiple("modules.spotlight", SpotlightEvaluationLogic=MagicMock()),
     ):
         yield
 
