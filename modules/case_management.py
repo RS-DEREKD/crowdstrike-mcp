@@ -547,10 +547,8 @@ class CaseManagementModule(BaseModule):
             response = self.falcon.aggregate_access_tags(body=body)
 
             if response["status_code"] != 200:
-                return format_text_response(
-                    f"Failed to aggregate access tags: {format_api_error(response, 'Failed to aggregate access tags', operation='aggregates_access_tags_post_v1')}",
-                    raw=True,
-                )
+                err = format_api_error(response, "Failed to aggregate access tags", operation="aggregates_access_tags_post_v1")
+                return format_text_response(f"Failed to aggregate access tags: {err}", raw=True)
 
             resources = response.get("body", {}).get("resources", [])
             lines = ["Access Tag Aggregation Results", ""]
@@ -571,10 +569,8 @@ class CaseManagementModule(BaseModule):
             response = self.falcon.get_rtr_file_metadata(body={"case_id": case_id})
 
             if response["status_code"] != 200:
-                return format_text_response(
-                    f"Failed to get RTR file metadata: {format_api_error(response, 'Failed to get RTR file metadata', operation='entities_get_rtr_file_metadata_post_v1')}",
-                    raw=True,
-                )
+                err = format_api_error(response, "Failed to get RTR file metadata", operation="entities_get_rtr_file_metadata_post_v1")
+                return format_text_response(f"Failed to get RTR file metadata: {err}", raw=True)
 
             resources = response.get("body", {}).get("resources", [])
             lines = [f"RTR File Metadata for Case {case_id} ({len(resources)} files)", ""]
@@ -610,10 +606,8 @@ class CaseManagementModule(BaseModule):
             response = self.falcon.get_rtr_recent_files(body={"case_id": case_id})
 
             if response["status_code"] != 200:
-                return format_text_response(
-                    f"Failed to get RTR recent files: {format_api_error(response, 'Failed to get RTR recent files', operation='entities_retrieve_rtr_recent_file_post_v1')}",
-                    raw=True,
-                )
+                err = format_api_error(response, "Failed to get RTR recent files", operation="entities_retrieve_rtr_recent_file_post_v1")
+                return format_text_response(f"Failed to get RTR recent files: {err}", raw=True)
 
             resources = response.get("body", {}).get("resources", [])
             lines = [f"Recent RTR Files for Case {case_id} ({len(resources)} files)", ""]

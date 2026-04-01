@@ -532,10 +532,8 @@ class CorrelationModule(BaseModule):
                 response = self.falcon.get_templates(ids=template_ids)
 
             if response["status_code"] != 200:
-                return format_text_response(
-                    f"Failed to get templates: {format_api_error(response, 'Failed to get template details', operation='entities_templates_get_v1Mixin0')}",
-                    raw=True,
-                )
+                err = format_api_error(response, "Failed to get template details", operation="entities_templates_get_v1Mixin0")
+                return format_text_response(f"Failed to get templates: {err}", raw=True)
 
             resources = response.get("body", {}).get("resources", [])
 

@@ -34,9 +34,7 @@ class TestCaseQueryAccessTags:
                 "meta": {"pagination": {"total": 2}},
             },
         }
-        result = asyncio.run(
-            case_module.case_query_access_tags()
-        )
+        result = asyncio.run(case_module.case_query_access_tags())
         assert "tag-001" in result
         assert "tag-002" in result
 
@@ -48,9 +46,7 @@ class TestCaseQueryAccessTags:
                 "meta": {"pagination": {"total": 0}},
             },
         }
-        result = asyncio.run(
-            case_module.case_query_access_tags()
-        )
+        result = asyncio.run(case_module.case_query_access_tags())
         assert "no access tags" in result.lower() or "0" in result
 
     def test_handles_api_error(self, case_module):
@@ -58,9 +54,7 @@ class TestCaseQueryAccessTags:
             "status_code": 403,
             "body": {"errors": [{"message": "Forbidden"}]},
         }
-        result = asyncio.run(
-            case_module.case_query_access_tags()
-        )
+        result = asyncio.run(case_module.case_query_access_tags())
         assert "failed" in result.lower()
 
 
@@ -70,15 +64,9 @@ class TestCaseGetAccessTags:
     def test_returns_tag_details(self, case_module):
         case_module.falcon.get_access_tags.return_value = {
             "status_code": 200,
-            "body": {
-                "resources": [
-                    {"id": "tag-001", "name": "SOC-Team", "description": "SOC team access"}
-                ]
-            },
+            "body": {"resources": [{"id": "tag-001", "name": "SOC-Team", "description": "SOC team access"}]},
         }
-        result = asyncio.run(
-            case_module.case_get_access_tags(tag_ids=["tag-001"])
-        )
+        result = asyncio.run(case_module.case_get_access_tags(tag_ids=["tag-001"]))
         assert "SOC-Team" in result
         assert "tag-001" in result
 
@@ -87,9 +75,7 @@ class TestCaseGetAccessTags:
             "status_code": 404,
             "body": {"errors": [{"message": "Not found"}]},
         }
-        result = asyncio.run(
-            case_module.case_get_access_tags(tag_ids=["bad-id"])
-        )
+        result = asyncio.run(case_module.case_get_access_tags(tag_ids=["bad-id"]))
         assert "failed" in result.lower()
 
 
@@ -99,11 +85,7 @@ class TestCaseAggregateAccessTags:
     def test_returns_aggregation_data(self, case_module):
         case_module.falcon.aggregate_access_tags.return_value = {
             "status_code": 200,
-            "body": {
-                "resources": [
-                    {"name": "tag_count", "buckets": [{"label": "SOC", "count": 5}]}
-                ]
-            },
+            "body": {"resources": [{"name": "tag_count", "buckets": [{"label": "SOC", "count": 5}]}]},
         }
         result = asyncio.run(
             case_module.case_aggregate_access_tags(
@@ -150,9 +132,7 @@ class TestCaseGetRtrFileMetadata:
                 ]
             },
         }
-        result = asyncio.run(
-            case_module.case_get_rtr_file_metadata(case_id="case-123")
-        )
+        result = asyncio.run(case_module.case_get_rtr_file_metadata(case_id="case-123"))
         assert "suspicious.exe" in result
         assert "file-001" in result
 
@@ -161,9 +141,7 @@ class TestCaseGetRtrFileMetadata:
             "status_code": 200,
             "body": {"resources": []},
         }
-        result = asyncio.run(
-            case_module.case_get_rtr_file_metadata(case_id="case-123")
-        )
+        result = asyncio.run(case_module.case_get_rtr_file_metadata(case_id="case-123"))
         assert "no rtr" in result.lower() or "0" in result
 
     def test_handles_api_error(self, case_module):
@@ -171,9 +149,7 @@ class TestCaseGetRtrFileMetadata:
             "status_code": 403,
             "body": {"errors": [{"message": "Forbidden"}]},
         }
-        result = asyncio.run(
-            case_module.case_get_rtr_file_metadata(case_id="case-123")
-        )
+        result = asyncio.run(case_module.case_get_rtr_file_metadata(case_id="case-123"))
         assert "failed" in result.lower()
 
 
@@ -193,9 +169,7 @@ class TestCaseGetRtrRecentFiles:
                 ]
             },
         }
-        result = asyncio.run(
-            case_module.case_get_rtr_recent_files(case_id="case-123")
-        )
+        result = asyncio.run(case_module.case_get_rtr_recent_files(case_id="case-123"))
         assert "collected.log" in result
 
     def test_handles_api_error(self, case_module):
@@ -203,9 +177,7 @@ class TestCaseGetRtrRecentFiles:
             "status_code": 500,
             "body": {"errors": [{"message": "Internal error"}]},
         }
-        result = asyncio.run(
-            case_module.case_get_rtr_recent_files(case_id="case-123")
-        )
+        result = asyncio.run(case_module.case_get_rtr_recent_files(case_id="case-123"))
         assert "failed" in result.lower()
 
 

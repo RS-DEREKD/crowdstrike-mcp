@@ -40,9 +40,7 @@ class TestSpotlightSupportedEvaluations:
                 ]
             },
         }
-        result = asyncio.run(
-            spotlight_module.spotlight_supported_evaluations()
-        )
+        result = asyncio.run(spotlight_module.spotlight_supported_evaluations())
         assert "Windows Kernel Vulnerability" in result
         assert "eval-001" in result
 
@@ -51,9 +49,7 @@ class TestSpotlightSupportedEvaluations:
             "status_code": 200,
             "body": {"resources": []},
         }
-        result = asyncio.run(
-            spotlight_module.spotlight_supported_evaluations()
-        )
+        result = asyncio.run(spotlight_module.spotlight_supported_evaluations())
         assert "no evaluation" in result.lower() or "0" in result
 
     def test_handles_api_error(self, spotlight_module):
@@ -61,9 +57,7 @@ class TestSpotlightSupportedEvaluations:
             "status_code": 403,
             "body": {"errors": [{"message": "Forbidden"}]},
         }
-        result = asyncio.run(
-            spotlight_module.spotlight_supported_evaluations()
-        )
+        result = asyncio.run(spotlight_module.spotlight_supported_evaluations())
         assert "failed" in result.lower()
 
     def test_passes_filter_parameter(self, spotlight_module):
@@ -71,12 +65,8 @@ class TestSpotlightSupportedEvaluations:
             "status_code": 200,
             "body": {"resources": []},
         }
-        asyncio.run(
-            spotlight_module.spotlight_supported_evaluations(filter="platform:'Windows'")
-        )
-        spotlight_module.falcon.combined_supported_evaluation.assert_called_once_with(
-            filter="platform:'Windows'"
-        )
+        asyncio.run(spotlight_module.spotlight_supported_evaluations(filter="platform:'Windows'"))
+        spotlight_module.falcon.combined_supported_evaluation.assert_called_once_with(filter="platform:'Windows'")
 
 
 class TestSpotlightToolRegistration:

@@ -16,7 +16,7 @@ MOCK_TEMPLATE = {
     "description": "Detects repeated RDP login failures indicating brute force attempts.",
     "severity": 60,
     "search": {
-        "filter": '#event_simpleName=UserLogonFailed2 LogonType=10 | groupBy([aid, UserName], function=count()) | count > 10',
+        "filter": "#event_simpleName=UserLogonFailed2 LogonType=10 | groupBy([aid, UserName], function=count()) | count > 10",
     },
     "created_on": "2026-01-15T00:00:00Z",
     "updated_on": "2026-03-20T00:00:00Z",
@@ -47,9 +47,7 @@ class TestCorrelationListTemplates:
                 "meta": {"pagination": {"total": 2}},
             },
         }
-        result = asyncio.run(
-            correlation_module.correlation_list_templates()
-        )
+        result = asyncio.run(correlation_module.correlation_list_templates())
         assert "template-uuid-001" in result
         assert "template-uuid-002" in result
 
@@ -61,9 +59,7 @@ class TestCorrelationListTemplates:
                 "meta": {"pagination": {"total": 0}},
             },
         }
-        result = asyncio.run(
-            correlation_module.correlation_list_templates()
-        )
+        result = asyncio.run(correlation_module.correlation_list_templates())
         assert "no templates" in result.lower() or "0" in result
 
     def test_handles_api_error(self, correlation_module):
@@ -71,9 +67,7 @@ class TestCorrelationListTemplates:
             "status_code": 403,
             "body": {"errors": [{"message": "Forbidden"}]},
         }
-        result = asyncio.run(
-            correlation_module.correlation_list_templates()
-        )
+        result = asyncio.run(correlation_module.correlation_list_templates())
         assert "failed" in result.lower()
 
 
@@ -85,11 +79,7 @@ class TestCorrelationGetTemplate:
             "status_code": 200,
             "body": {"resources": [MOCK_TEMPLATE]},
         }
-        result = asyncio.run(
-            correlation_module.correlation_get_template(
-                template_ids=["template-uuid-001"]
-            )
-        )
+        result = asyncio.run(correlation_module.correlation_get_template(template_ids=["template-uuid-001"]))
         assert "Lateral Movement" in result
         assert "template-uuid-001" in result
         assert "RDP" in result
@@ -99,11 +89,7 @@ class TestCorrelationGetTemplate:
             "status_code": 200,
             "body": {"resources": []},
         }
-        result = asyncio.run(
-            correlation_module.correlation_get_template(
-                template_ids=["bad-id"]
-            )
-        )
+        result = asyncio.run(correlation_module.correlation_get_template(template_ids=["bad-id"]))
         assert "no templates found" in result.lower()
 
     def test_handles_api_error(self, correlation_module):
@@ -111,11 +97,7 @@ class TestCorrelationGetTemplate:
             "status_code": 500,
             "body": {"errors": [{"message": "Internal error"}]},
         }
-        result = asyncio.run(
-            correlation_module.correlation_get_template(
-                template_ids=["template-uuid-001"]
-            )
-        )
+        result = asyncio.run(correlation_module.correlation_get_template(template_ids=["template-uuid-001"]))
         assert "failed" in result.lower()
 
 

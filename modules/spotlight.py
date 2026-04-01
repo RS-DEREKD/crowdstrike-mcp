@@ -53,10 +53,8 @@ class SpotlightModule(BaseModule):
             response = self.falcon.combined_supported_evaluation(**kwargs)
 
             if response["status_code"] != 200:
-                return format_text_response(
-                    f"Failed to get supported evaluations: {format_api_error(response, 'Failed to get evaluations', operation='combinedSupportedEvaluationExt')}",
-                    raw=True,
-                )
+                err = format_api_error(response, "Failed to get evaluations", operation="combinedSupportedEvaluationExt")
+                return format_text_response(f"Failed to get supported evaluations: {err}", raw=True)
 
             resources = response.get("body", {}).get("resources", [])
             lines = [f"Spotlight Supported Evaluations ({len(resources)} results)", ""]
