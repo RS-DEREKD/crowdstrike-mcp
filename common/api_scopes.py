@@ -16,8 +16,6 @@ OPERATION_SCOPES = {
     "query_alerts_v2": ["alerts:read"],
     "get_alerts_v2": ["alerts:read"],
     "update_alerts_v3": ["alerts:write"],
-    # Detects (Endpoint)
-    "get_detect_summaries": ["detects:read"],
     # Hosts
     "query_devices_by_filter": ["hosts:read"],
     "get_device_details": ["hosts:read"],
@@ -27,6 +25,9 @@ OPERATION_SCOPES = {
     "query_rules": ["correlation-rules:read"],
     "get_rules": ["correlation-rules:read"],
     "update_rules": ["correlation-rules:write"],
+    # Correlation Rules — Templates (v1.6.1)
+    "queries_templates_get_v1Mixin0": ["correlation-rules:read"],
+    "entities_templates_get_v1Mixin0": ["correlation-rules:read"],
     # CSPM Registration
     "get_aws_account": ["cspm-registration:read"],
     "get_azure_account": ["cspm-registration:read"],
@@ -43,6 +44,12 @@ OPERATION_SCOPES = {
     "entities_files_upload_post_v1": ["cases:write"],
     "entities_fields_get_v1": ["cases:read"],
     "queries_fields_get_v1": ["cases:read"],
+    # Case Management — Access Tags & RTR (v1.6.1)
+    "queries_access_tags_get_v1": ["cases:read"],
+    "entities_access_tags_get_v1": ["cases:read"],
+    "aggregates_access_tags_post_v1": ["cases:read"],
+    "entities_get_rtr_file_metadata_post_v1": ["cases:read"],
+    "entities_retrieve_rtr_recent_file_post_v1": ["cases:read"],
     # Cloud Security
     "combined_cloud_risks": ["cloud-security:read"],
     "query_iom_entities": ["cloud-security-detections:read"],
@@ -50,6 +57,16 @@ OPERATION_SCOPES = {
     "query_assets": ["cloud-security-assets:read"],
     "get_assets": ["cloud-security-assets:read"],
     "get_combined_compliance_by_account": ["cloud-security-assets:read"],
+    # Spotlight Evaluation Logic
+    "combinedSupportedEvaluationExt": ["spotlight-vulnerabilities:read"],
+    # CAO Hunting
+    "search_queries": ["cao-hunting:read"],
+    "get_queries": ["cao-hunting:read"],
+    "aggregate_queries": ["cao-hunting:read"],
+    "search_guides": ["cao-hunting:read"],
+    "get_guides": ["cao-hunting:read"],
+    "aggregate_guides": ["cao-hunting:read"],
+    "create_export_archive": ["cao-hunting:read"],
 }
 
 

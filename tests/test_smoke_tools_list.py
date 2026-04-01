@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 # We patch these so no real auth is required.
 _FALCONPY_PATCHES = [
     "modules.alerts.Alerts",
+    "modules.cao_hunting.CAOHunting",
     "modules.case_management.CaseManagement",
     "modules.cloud_registration.CSPMRegistration",
     "modules.cloud_security.CloudSecurity",
@@ -38,6 +39,11 @@ EXPECTED_READ_TOOLS = {
     "case_query",
     "case_get",
     "case_get_fields",
+    "cao_search_queries",
+    "cao_get_queries",
+    "cao_search_guides",
+    "cao_get_guides",
+    "cao_aggregate",
     "cloud_list_accounts",
     "cloud_policy_settings",
     "cloud_get_risks",
@@ -67,6 +73,7 @@ def _patch_falconpy():
     """Patch all FalconPy service classes to MagicMock so no real auth is needed."""
     with (
         patch.multiple("modules.alerts", Alerts=MagicMock()),
+        patch.multiple("modules.cao_hunting", CAOHunting=MagicMock()),
         patch.multiple("modules.case_management", CaseManagement=MagicMock()),
         patch.multiple("modules.cloud_registration", CSPMRegistration=MagicMock()),
         patch.multiple("modules.cloud_security", CloudSecurity=MagicMock(), CloudSecurityDetections=MagicMock(), CloudSecurityAssets=MagicMock()),
