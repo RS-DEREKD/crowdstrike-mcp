@@ -22,6 +22,7 @@ _FALCONPY_PATCHES = [
     "modules.hosts.Hosts",
     "modules.ngsiem.NGSIEM",
     "modules.response.Hosts",
+    "modules.spotlight.SpotlightEvaluationLogic",
 ]
 
 # Expected tool sets — update these when adding/removing tools
@@ -50,6 +51,14 @@ EXPECTED_READ_TOOLS = {
     "cloud_get_iom_detections",
     "cloud_query_assets",
     "cloud_compliance_by_account",
+    "case_query_access_tags",
+    "case_get_access_tags",
+    "case_aggregate_access_tags",
+    "case_get_rtr_file_metadata",
+    "case_get_rtr_recent_files",
+    "correlation_list_templates",
+    "correlation_get_template",
+    "spotlight_supported_evaluations",
 }
 
 EXPECTED_WRITE_TOOLS = {
@@ -81,6 +90,7 @@ def _patch_falconpy():
         patch.multiple("modules.hosts", Hosts=MagicMock()),
         patch.multiple("modules.ngsiem", NGSIEM=MagicMock()),
         patch.multiple("modules.response", Hosts=MagicMock()),
+        patch.multiple("modules.spotlight", SpotlightEvaluationLogic=MagicMock()),
     ):
         yield
 
