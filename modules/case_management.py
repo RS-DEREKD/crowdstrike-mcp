@@ -12,6 +12,9 @@ Tools:
   case_delete_tags        — Remove tags from a case
   case_upload_file        — Upload file attachment to a case
   case_get_fields         — List available case field definitions
+  case_query_access_tags  — Query available access tags
+  case_get_access_tags    — Get access tag details by ID
+  case_aggregate_access_tags — Aggregate access tag data
 """
 
 from __future__ import annotations
@@ -121,6 +124,24 @@ class CaseManagementModule(BaseModule):
             self.case_get_fields,
             name="case_get_fields",
             description="List available case field definitions and their types.",
+        )
+        self._add_tool(
+            server,
+            self.case_query_access_tags,
+            name="case_query_access_tags",
+            description="Query available case access tags with optional FQL filtering. Returns tag IDs for understanding case access controls.",
+        )
+        self._add_tool(
+            server,
+            self.case_get_access_tags,
+            name="case_get_access_tags",
+            description="Get access tag details by ID — name, description, and scope.",
+        )
+        self._add_tool(
+            server,
+            self.case_aggregate_access_tags,
+            name="case_aggregate_access_tags",
+            description="Aggregate case access tag data (counts, groupings by field).",
         )
 
     # ------------------------------------------------------------------
@@ -420,6 +441,112 @@ class CaseManagementModule(BaseModule):
             lines.append("```")
 
         return format_text_response("\n".join(lines), raw=True)
+
+    async def case_query_access_tags(
+        self,
+        filter: Annotated[Optional[str], "FQL filter expression for access tags"] = None,
+        limit: Annotated[int, "Maximum tags to return (default: 100)"] = 100,
+        offset: Annotated[int, "Pagination offset (default: 0)"] = 0,
+    ) -> str:
+        """Query available case access tags."""
+        try:
+            kwargs = {"limit": min(limit, 500), "offset": offset}
+            if filter:
+                kwargs["filter"] = filter
+
+            response = self.falcon.query_access_tags(**kwargs)
+
+            if response["status_code"] != 200:
+                return format_text_response(
+                    f"Failed to query access tags: {format_api_error(response, 'Failed to query access tags', operation='queries_access_tags_get_v1')}",
+                    raw=True,
+                )
+
+            tag_ids = response.get("body", {}).get("resources", [])
+            total = response.get("body", {}).get("meta", {}).get("pagination", {}).get("total", len(tag_ids))
+
+            lines = [f"Access Tags: {len(tag_ids)} returned (of {total} total)", ""]
+            if not tag_ids:
+                lines.append("No access tags found.")
+            else:
+                for i, tag_id in enumerate(tag_ids, 1):
+                    lines.append(f"{i}. {tag_id}")
+
+            return format_text_response("\n".join(lines), raw=True)
+        except Exception as e:
+            return format_text_response(f"Failed to query access tags: {e}", raw=True)
+
+    async def case_get_access_tags(
+        self,
+        tag_ids: Annotated[list[str], "List of access tag IDs to retrieve"],
+    ) -> str:
+        """Get access tag details by ID."""
+        try:
+            response = self.falcon.get_access_tags(ids=tag_ids)
+
+            if response["status_code"] != 200:
+                return format_text_response(
+                    f"Failed to get access tags: {format_api_error(response, 'Failed to get access tags', operation='entities_access_tags_get_v1')}",
+                    raw=True,
+                )
+
+            resources = response.get("body", {}).get("resources", [])
+            lines = [f"Access Tag Details ({len(resources)} tags)", ""]
+
+            for tag in resources:
+                lines.append(f"### {tag.get('name', 'Unknown')}")
+                lines.append(f"- **ID**: {tag.get('id', 'N/A')}")
+                if tag.get("description"):
+                    lines.append(f"- **Description**: {tag['description']}")
+                lines.append("")
+                lines.append("```json")
+                lines.append(json.dumps(tag, indent=2, default=str))
+                lines.append("```")
+                lines.append("")
+
+            if not resources:
+                lines.append("No access tags found for the provided IDs.")
+
+            return format_text_response("\n".join(lines), raw=True)
+        except Exception as e:
+            return format_text_response(f"Failed to get access tags: {e}", raw=True)
+
+    async def case_aggregate_access_tags(
+        self,
+        date_ranges: Annotated[list, "Date range specifications for aggregation"],
+        field: Annotated[str, "Field to aggregate on (e.g. 'name', 'id')"],
+        filter: Annotated[str, "FQL filter to scope the aggregation"],
+        name: Annotated[str, "Name for this aggregation result"],
+        type: Annotated[str, "Aggregation type (e.g. 'terms', 'date_range', 'count')"],
+    ) -> str:
+        """Aggregate case access tag data."""
+        try:
+            body = [
+                {
+                    "date_ranges": date_ranges,
+                    "field": field,
+                    "filter": filter,
+                    "name": name,
+                    "type": type,
+                }
+            ]
+            response = self.falcon.aggregate_access_tags(body=body)
+
+            if response["status_code"] != 200:
+                return format_text_response(
+                    f"Failed to aggregate access tags: {format_api_error(response, 'Failed to aggregate access tags', operation='aggregates_access_tags_post_v1')}",
+                    raw=True,
+                )
+
+            resources = response.get("body", {}).get("resources", [])
+            lines = ["Access Tag Aggregation Results", ""]
+            lines.append("```json")
+            lines.append(json.dumps(resources, indent=2, default=str))
+            lines.append("```")
+
+            return format_text_response("\n".join(lines), raw=True)
+        except Exception as e:
+            return format_text_response(f"Failed to aggregate access tags: {e}", raw=True)
 
     # ------------------------------------------------------------------
     # Internal methods
