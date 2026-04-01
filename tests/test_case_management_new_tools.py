@@ -133,13 +133,91 @@ class TestCaseAggregateAccessTags:
         assert "failed" in result.lower()
 
 
+class TestCaseGetRtrFileMetadata:
+    """Test case_get_rtr_file_metadata tool."""
+
+    def test_returns_file_metadata(self, case_module):
+        case_module.falcon.get_rtr_file_metadata.return_value = {
+            "status_code": 200,
+            "body": {
+                "resources": [
+                    {
+                        "id": "file-001",
+                        "file_name": "suspicious.exe",
+                        "file_size": 1024,
+                        "sha256": "abc123def456",
+                    }
+                ]
+            },
+        }
+        result = asyncio.get_event_loop().run_until_complete(
+            case_module.case_get_rtr_file_metadata(case_id="case-123")
+        )
+        assert "suspicious.exe" in result
+        assert "file-001" in result
+
+    def test_handles_no_files(self, case_module):
+        case_module.falcon.get_rtr_file_metadata.return_value = {
+            "status_code": 200,
+            "body": {"resources": []},
+        }
+        result = asyncio.get_event_loop().run_until_complete(
+            case_module.case_get_rtr_file_metadata(case_id="case-123")
+        )
+        assert "no rtr" in result.lower() or "0" in result
+
+    def test_handles_api_error(self, case_module):
+        case_module.falcon.get_rtr_file_metadata.return_value = {
+            "status_code": 403,
+            "body": {"errors": [{"message": "Forbidden"}]},
+        }
+        result = asyncio.get_event_loop().run_until_complete(
+            case_module.case_get_rtr_file_metadata(case_id="case-123")
+        )
+        assert "failed" in result.lower()
+
+
+class TestCaseGetRtrRecentFiles:
+    """Test case_get_rtr_recent_files tool."""
+
+    def test_returns_recent_files(self, case_module):
+        case_module.falcon.get_rtr_recent_files.return_value = {
+            "status_code": 200,
+            "body": {
+                "resources": [
+                    {
+                        "id": "file-002",
+                        "file_name": "collected.log",
+                        "created_on": "2026-03-31T12:00:00Z",
+                    }
+                ]
+            },
+        }
+        result = asyncio.get_event_loop().run_until_complete(
+            case_module.case_get_rtr_recent_files(case_id="case-123")
+        )
+        assert "collected.log" in result
+
+    def test_handles_api_error(self, case_module):
+        case_module.falcon.get_rtr_recent_files.return_value = {
+            "status_code": 500,
+            "body": {"errors": [{"message": "Internal error"}]},
+        }
+        result = asyncio.get_event_loop().run_until_complete(
+            case_module.case_get_rtr_recent_files(case_id="case-123")
+        )
+        assert "failed" in result.lower()
+
+
 class TestToolRegistration:
     """Verify new tools register correctly."""
 
-    def test_access_tag_tools_register_as_read(self, case_module):
+    def test_all_new_tools_register_as_read(self, case_module):
         server = MagicMock()
         server.tool.return_value = lambda fn: fn
         case_module.register_tools(server)
         assert "case_query_access_tags" in case_module.tools
         assert "case_get_access_tags" in case_module.tools
         assert "case_aggregate_access_tags" in case_module.tools
+        assert "case_get_rtr_file_metadata" in case_module.tools
+        assert "case_get_rtr_recent_files" in case_module.tools
