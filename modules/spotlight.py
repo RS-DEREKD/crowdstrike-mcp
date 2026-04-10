@@ -25,7 +25,6 @@ class SpotlightModule(BaseModule):
 
     def __init__(self, client):
         super().__init__(client)
-        self.falcon = SpotlightEvaluationLogic(auth_object=self.client.auth_object)
         self._log("Initialized")
 
     def register_tools(self, server: FastMCP) -> None:
@@ -50,7 +49,8 @@ class SpotlightModule(BaseModule):
             if filter:
                 kwargs["filter"] = filter
 
-            response = self.falcon.combined_supported_evaluation(**kwargs)
+            falcon = self._service(SpotlightEvaluationLogic)
+            response = falcon.combined_supported_evaluation(**kwargs)
 
             if response["status_code"] != 200:
                 err = format_api_error(response, "Failed to get evaluations", operation="combinedSupportedEvaluationExt")

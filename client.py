@@ -25,7 +25,7 @@ try:
 except Exception:
     _FALCONPY_VERSION = "unknown"
 
-SERVER_VERSION = "3.0.0"
+SERVER_VERSION = "3.1.0"
 USER_AGENT = f"crowdstrike-custom-mcp/{SERVER_VERSION} (falconpy/{_FALCONPY_VERSION}; Python/{platform.python_version()})"
 
 
@@ -44,14 +44,34 @@ class FalconClient:
         self._client_secret = resolved["client_secret"]
         self._base_url = resolved["base_url"]
         self._auth: Optional[OAuth2] = None
+        self._deferred = False
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
 
+    @classmethod
+    def deferred(cls) -> "FalconClient":
+        """Create a credential-less instance for HTTP mode.
+
+        Modules construct normally but must use BaseModule._get_auth()
+        at call time instead of self.client.auth_object.
+        """
+        instance = cls.__new__(cls)
+        instance._client_id = None
+        instance._client_secret = None
+        instance._base_url = None
+        instance._auth = None
+        instance._deferred = True
+        return instance
+
     @property
     def auth_object(self) -> OAuth2:
         """Lazily create and cache a shared OAuth2 session."""
+        if self._deferred:
+            raise RuntimeError(
+                "Cannot access auth_object on a deferred FalconClient. Use BaseModule._get_auth() which resolves from the session ContextVar."
+            )
         if self._auth is None:
             self._auth = OAuth2(
                 client_id=self._client_id,

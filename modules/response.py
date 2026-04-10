@@ -54,7 +54,6 @@ class ResponseModule(BaseModule):
         super().__init__(client)
         if not HOSTS_AVAILABLE:
             raise ImportError("falconpy.Hosts not available. Ensure crowdstrike-falconpy >= 1.6.0 is installed.")
-        self.hosts = Hosts(auth_object=self.client.auth_object)
 
         # Audit log path
         self._audit_log_path = os.path.expanduser("~/.config/falcon/containment_audit.log")
@@ -167,7 +166,8 @@ class ResponseModule(BaseModule):
     def _get_device(self, device_id: str) -> Optional[dict]:
         """Fetch device details by ID. Returns None if not found."""
         try:
-            response = self.hosts.get_device_details(ids=[device_id])
+            hosts = self._service(Hosts)
+            response = hosts.get_device_details(ids=[device_id])
             if response["status_code"] != 200:
                 return None
             resources = response.get("body", {}).get("resources", [])
@@ -265,7 +265,8 @@ class ResponseModule(BaseModule):
         hostname = device.get("hostname", "Unknown")
 
         try:
-            response = self.hosts.perform_action(
+            hosts = self._service(Hosts)
+            response = hosts.perform_action(
                 action_name=action_name,
                 ids=[device_id],
             )

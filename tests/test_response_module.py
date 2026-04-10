@@ -43,6 +43,8 @@ def response_module(mock_client):
         from modules.response import ResponseModule
 
         module = ResponseModule(mock_client)
+        module._service = lambda cls: mock_hosts
+        # Expose the mock for tests that configure return values via module.hosts
         module.hosts = mock_hosts
         return module
 

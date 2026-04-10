@@ -48,17 +48,9 @@ class CorrelationModule(BaseModule):
 
     def __init__(self, client):
         super().__init__(client)
-        self._use_harness = False
+        self._use_harness = not CORRELATION_AVAILABLE
 
-        if CORRELATION_AVAILABLE:
-            try:
-                self.falcon = CorrelationRules(auth_object=self.client.auth_object)
-                self._log("Initialized with CorrelationRules service class")
-            except Exception:
-                self._init_harness()
-        elif HARNESS_AVAILABLE:
-            self._init_harness()
-        else:
+        if not CORRELATION_AVAILABLE and not HARNESS_AVAILABLE:
             raise ImportError("Neither falconpy.CorrelationRules nor falconpy.APIHarnessV2 available. Ensure crowdstrike-falconpy >= 1.6.0 is installed.")
 
         # Path to crowdstrike-detections repo for IaC file writes
@@ -70,10 +62,9 @@ class CorrelationModule(BaseModule):
             self._detections_repo_path = None
             self._log("DETECTIONS_REPO_PATH not found — correlation_import_to_iac will use dry-run mode")
 
-    def _init_harness(self):
-        self.falcon = APIHarnessV2(auth_object=self.client.auth_object)
-        self._use_harness = True
-        self._log("Initialized with APIHarnessV2 (Uber class)")
+    def _get_correlation_service(self):
+        cls = CorrelationRules if CORRELATION_AVAILABLE else APIHarnessV2
+        return self._service(cls)
 
     def register_tools(self, server: FastMCP) -> None:
         self._add_tool(
@@ -259,14 +250,15 @@ class CorrelationModule(BaseModule):
 
     def _list_rules(self, enabled=None, search=None, max_results=100):
         try:
+            falcon = self._get_correlation_service()
             all_rule_ids = []
             offset = 0
             batch_limit = 500
             while True:
                 if self._use_harness:
-                    response = self.falcon.command("queries_rules_get_v1", limit=batch_limit, offset=offset)
+                    response = falcon.command("queries_rules_get_v1", limit=batch_limit, offset=offset)
                 else:
-                    response = self.falcon.query_rules(limit=batch_limit, offset=offset)
+                    response = falcon.query_rules(limit=batch_limit, offset=offset)
 
                 if response["status_code"] != 200:
                     return {"success": False, "error": format_api_error(response, "Failed to query rules", operation="query_rules")}
@@ -287,9 +279,9 @@ class CorrelationModule(BaseModule):
             for i in range(0, len(all_rule_ids), batch_size):
                 batch = all_rule_ids[i : i + batch_size]
                 if self._use_harness:
-                    details = self.falcon.command("entities_rules_get_v1", ids=batch)
+                    details = falcon.command("entities_rules_get_v1", ids=batch)
                 else:
-                    details = self.falcon.get_rules(ids=batch)
+                    details = falcon.get_rules(ids=batch)
 
                 if details["status_code"] != 200:
                     self._log(f"Failed to get details for batch {i // batch_size + 1}")
@@ -328,10 +320,11 @@ class CorrelationModule(BaseModule):
 
     def _get_rules(self, rule_ids):
         try:
+            falcon = self._get_correlation_service()
             if self._use_harness:
-                response = self.falcon.command("entities_rules_get_v1", ids=rule_ids)
+                response = falcon.command("entities_rules_get_v1", ids=rule_ids)
             else:
-                response = self.falcon.get_rules(ids=rule_ids)
+                response = falcon.get_rules(ids=rule_ids)
 
             if response["status_code"] != 200:
                 return {"success": False, "error": format_api_error(response, "Failed to get rule details", operation="get_rules")}
@@ -346,14 +339,15 @@ class CorrelationModule(BaseModule):
 
     def _update_rule(self, rule_id, enabled, comment=None):
         try:
+            falcon = self._get_correlation_service()
             update_payload = [{"id": rule_id, "enabled": enabled}]
             if comment:
                 update_payload[0]["comment"] = comment
 
             if self._use_harness:
-                response = self.falcon.command("entities_rules_patch_v1", body=update_payload)
+                response = falcon.command("entities_rules_patch_v1", body=update_payload)
             else:
-                response = self.falcon.update_rules(body=update_payload)
+                response = falcon.update_rules(body=update_payload)
 
             if response["status_code"] != 200:
                 return {"success": False, "error": format_api_error(response, "Failed to update rule", operation="update_rules")}
@@ -490,14 +484,15 @@ class CorrelationModule(BaseModule):
     ) -> str:
         """List available correlation rule templates."""
         try:
+            falcon = self._get_correlation_service()
             kwargs = {"limit": min(limit, 500), "offset": offset}
             if filter:
                 kwargs["filter"] = filter
 
             if self._use_harness:
-                response = self.falcon.command("queries_templates_get_v1Mixin0", **kwargs)
+                response = falcon.command("queries_templates_get_v1Mixin0", **kwargs)
             else:
-                response = self.falcon.query_templates(**kwargs)
+                response = falcon.query_templates(**kwargs)
 
             if response["status_code"] != 200:
                 return format_text_response(
@@ -526,10 +521,11 @@ class CorrelationModule(BaseModule):
     ) -> str:
         """Get full details for correlation rule templates."""
         try:
+            falcon = self._get_correlation_service()
             if self._use_harness:
-                response = self.falcon.command("entities_templates_get_v1Mixin0", ids=template_ids)
+                response = falcon.command("entities_templates_get_v1Mixin0", ids=template_ids)
             else:
-                response = self.falcon.get_templates(ids=template_ids)
+                response = falcon.get_templates(ids=template_ids)
 
             if response["status_code"] != 200:
                 err = format_api_error(response, "Failed to get template details", operation="entities_templates_get_v1Mixin0")

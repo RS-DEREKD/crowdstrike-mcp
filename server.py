@@ -65,13 +65,19 @@ class FalconMCPServer:
         self.port = port
         self.api_key = api_key
 
-        # Create shared API client and verify credentials eagerly
-        self.client = FalconClient(
-            client_id=client_id,
-            client_secret=client_secret,
-            base_url=base_url,
-        )
-        self.client.authenticate()
+        # Create shared API client
+        if transport == "stdio":
+            # stdio: resolve credentials and authenticate eagerly
+            self.client = FalconClient(
+                client_id=client_id,
+                client_secret=client_secret,
+                base_url=base_url,
+            )
+            self.client.authenticate()
+        else:
+            # HTTP mode: credential-less startup, per-client auth via headers
+            self.client = FalconClient.deferred()
+            self._log("HTTP mode: server is credential-less, per-client auth via headers")
 
         # Create FastMCP server
         self.server = FastMCP("crowdstrike-falcon")
@@ -108,20 +114,30 @@ class FalconMCPServer:
             raise ValueError(f"Unknown transport: {self.transport}")
 
     def _run_http(self, transport_type: str):
-        """Start an HTTP-based transport (SSE or streamable-http) with optional auth."""
+        """Start an HTTP-based transport (SSE or streamable-http) with middleware stack."""
         import uvicorn
+
+        from client import SERVER_VERSION
+        from common.health import with_health_check
+        from common.session_auth import session_auth_middleware
 
         if transport_type == "sse":
             app = self.server.sse_app()
         else:
             app = self.server.streamable_http_app()
 
-        # Wrap with API key middleware if configured
+        # Layer 1: per-session Falcon auth (innermost)
+        app = session_auth_middleware(app)
+
+        # Layer 2: server access gate (optional)
         if self.api_key:
             from common.auth_middleware import auth_middleware
 
             app = auth_middleware(app, self.api_key)
             self._log(f"API key authentication enabled for {transport_type}")
+
+        # Layer 3: health check (outermost, no auth)
+        app = with_health_check(app, version=SERVER_VERSION, transport=transport_type)
 
         self._log(f"Starting {transport_type} transport on {self.host}:{self.port}")
         uvicorn.run(app, host=self.host, port=self.port)

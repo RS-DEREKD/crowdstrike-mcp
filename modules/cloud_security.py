@@ -47,39 +47,18 @@ class CloudSecurityModule(BaseModule):
 
     def __init__(self, client):
         super().__init__(client)
-        self._cloud_security = None
-        self._detections = None
-        self._assets = None
 
-        auth = self.client.auth_object
-
-        if CLOUD_SECURITY_AVAILABLE:
-            try:
-                self._cloud_security = CloudSecurity(auth_object=auth)
-            except Exception as e:
-                self._log(f"CloudSecurity init failed: {e}")
-        if DETECTIONS_AVAILABLE:
-            try:
-                self._detections = CloudSecurityDetections(auth_object=auth)
-            except Exception as e:
-                self._log(f"CloudSecurityDetections init failed: {e}")
-        if ASSETS_AVAILABLE:
-            try:
-                self._assets = CloudSecurityAssets(auth_object=auth)
-            except Exception as e:
-                self._log(f"CloudSecurityAssets init failed: {e}")
-
-        if not any([self._cloud_security, self._detections, self._assets]):
+        if not any([CLOUD_SECURITY_AVAILABLE, DETECTIONS_AVAILABLE, ASSETS_AVAILABLE]):
             raise ImportError("No cloud security FalconPy classes available. Ensure crowdstrike-falconpy >= 1.6.0 is installed.")
 
         available = [
             n
-            for n, c in [
-                ("CloudSecurity", self._cloud_security),
-                ("Detections", self._detections),
-                ("Assets", self._assets),
+            for n, flag in [
+                ("CloudSecurity", CLOUD_SECURITY_AVAILABLE),
+                ("Detections", DETECTIONS_AVAILABLE),
+                ("Assets", ASSETS_AVAILABLE),
             ]
-            if c
+            if flag
         ]
         self._log(f"Initialized ({', '.join(available)})")
 
@@ -300,9 +279,10 @@ class CloudSecurityModule(BaseModule):
     # ------------------------------------------------------------------
 
     def _get_cloud_risks(self, severity=None, status=None, provider=None, account_id=None, max_results=50):
-        if not self._cloud_security:
+        if not CLOUD_SECURITY_AVAILABLE:
             return {"success": False, "error": "CloudSecurity client not available"}
         try:
+            cloud_security = self._service(CloudSecurity)
             filter_parts = []
             if severity:
                 filter_parts.append(f"severity:'{severity}'")
@@ -317,7 +297,7 @@ class CloudSecurityModule(BaseModule):
             if filter_parts:
                 kwargs["filter"] = "+".join(filter_parts)
 
-            r = self._cloud_security.combined_cloud_risks(**kwargs)
+            r = cloud_security.combined_cloud_risks(**kwargs)
             if r["status_code"] != 200:
                 return {"success": False, "error": format_api_error(r, "Failed to get cloud risks", operation="combined_cloud_risks")}
 
@@ -353,9 +333,10 @@ class CloudSecurityModule(BaseModule):
             return {"success": False, "error": f"Error getting cloud risks: {e}"}
 
     def _get_iom_detections(self, severity=None, provider=None, account_id=None, resource_type=None, max_results=20):
-        if not self._detections:
+        if not DETECTIONS_AVAILABLE:
             return {"success": False, "error": "CloudSecurityDetections client not available"}
         try:
+            detections = self._service(CloudSecurityDetections)
             filter_parts = []
             if severity:
                 filter_parts.append(f"severity:'{severity}'")
@@ -370,7 +351,7 @@ class CloudSecurityModule(BaseModule):
             if filter_parts:
                 kwargs["filter"] = "+".join(filter_parts)
 
-            r = self._detections.query_iom_entities(**kwargs)
+            r = detections.query_iom_entities(**kwargs)
             if r["status_code"] != 200:
                 return {"success": False, "error": format_api_error(r, "Failed to query IOM entities", operation="query_iom_entities")}
 
@@ -380,7 +361,7 @@ class CloudSecurityModule(BaseModule):
             if not iom_ids:
                 return {"success": True, "detections": [], "count": 0, "total": total}
 
-            r2 = self._detections.get_iom_entities(ids=iom_ids)
+            r2 = detections.get_iom_entities(ids=iom_ids)
             if r2["status_code"] != 200:
                 return {"success": False, "error": format_api_error(r2, "Failed to get IOM entity details", operation="get_iom_entities")}
 
@@ -423,9 +404,10 @@ class CloudSecurityModule(BaseModule):
             return {"success": False, "error": f"Error getting IOM detections: {e}"}
 
     def _query_assets(self, provider=None, account_id=None, resource_type=None, region=None, resource_id=None, max_results=20):
-        if not self._assets:
+        if not ASSETS_AVAILABLE:
             return {"success": False, "error": "CloudSecurityAssets client not available"}
         try:
+            assets = self._service(CloudSecurityAssets)
             filter_parts = []
             if provider:
                 filter_parts.append(f"cloud_provider:'{provider}'")
@@ -442,7 +424,7 @@ class CloudSecurityModule(BaseModule):
             if filter_parts:
                 kwargs["filter"] = "+".join(filter_parts)
 
-            r = self._assets.query_assets(**kwargs)
+            r = assets.query_assets(**kwargs)
             if r["status_code"] != 200:
                 return {"success": False, "error": format_api_error(r, "Failed to query assets", operation="query_assets")}
 
@@ -452,7 +434,7 @@ class CloudSecurityModule(BaseModule):
             if not asset_ids:
                 return {"success": True, "assets": [], "count": 0, "total": total}
 
-            r2 = self._assets.get_assets(ids=asset_ids)
+            r2 = assets.get_assets(ids=asset_ids)
             if r2["status_code"] != 200:
                 return {"success": False, "error": format_api_error(r2, "Failed to get asset details", operation="get_assets")}
 
@@ -487,10 +469,11 @@ class CloudSecurityModule(BaseModule):
             return {"success": False, "error": f"Error querying assets: {e}"}
 
     def _get_compliance_by_account(self, max_results=50):
-        if not self._assets:
+        if not ASSETS_AVAILABLE:
             return {"success": False, "error": "CloudSecurityAssets client not available"}
         try:
-            r = self._assets.get_combined_compliance_by_account(limit=min(max_results, 100))
+            assets = self._service(CloudSecurityAssets)
+            r = assets.get_combined_compliance_by_account(limit=min(max_results, 100))
             if r["status_code"] != 200:
                 return {"success": False, "error": format_api_error(r, "Failed to get compliance data", operation="get_combined_compliance_by_account")}
 

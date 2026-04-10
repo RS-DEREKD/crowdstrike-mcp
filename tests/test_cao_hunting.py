@@ -17,7 +17,10 @@ def cao_module(mock_client):
         from modules.cao_hunting import CAOHuntingModule
 
         module = CAOHuntingModule(mock_client)
-        module._cao_hunting = MagicMock()
+        mock_cao = MagicMock()
+        module._service = lambda cls: mock_cao
+        # Expose the mock for tests that configure return values
+        module._cao_hunting = mock_cao
         return module
 
 

@@ -34,7 +34,6 @@ class HostsModule(BaseModule):
         super().__init__(client)
         if not HOSTS_AVAILABLE:
             raise ImportError("falconpy.Hosts not available. Ensure crowdstrike-falconpy >= 1.6.0 is installed.")
-        self.hosts = Hosts(auth_object=self.client.auth_object)
         self._log("Initialized")
 
     def register_resources(self, server: FastMCP) -> None:
@@ -182,19 +181,20 @@ class HostsModule(BaseModule):
             if not hostname and not device_id:
                 return {"success": False, "error": "At least one of hostname or device_id must be provided"}
 
+            hosts = self._service(Hosts)
             device_ids = []
             if device_id:
                 device_ids = [device_id]
             elif hostname:
                 filter_query = f"hostname:'{hostname}'"
-                response = self.hosts.query_devices_by_filter(filter=filter_query, limit=10)
+                response = hosts.query_devices_by_filter(filter=filter_query, limit=10)
                 if response["status_code"] != 200:
                     return {"success": False, "error": format_api_error(response, "Failed to query devices", operation="query_devices_by_filter")}
                 device_ids = response.get("body", {}).get("resources", [])
                 if not device_ids:
                     return {"success": False, "error": f"No devices found with hostname: {hostname}"}
 
-            details_response = self.hosts.get_device_details(ids=device_ids)
+            details_response = hosts.get_device_details(ids=device_ids)
             if details_response["status_code"] != 200:
                 return {"success": False, "error": format_api_error(details_response, "Failed to get device details", operation="get_device_details")}
 
@@ -237,7 +237,8 @@ class HostsModule(BaseModule):
 
     def _get_login_history(self, device_id):
         try:
-            response = self.hosts.query_device_login_history(ids=[device_id])
+            hosts = self._service(Hosts)
+            response = hosts.query_device_login_history(ids=[device_id])
             if response["status_code"] != 200:
                 return {"success": False, "error": format_api_error(response, "Failed to get login history", operation="query_device_login_history")}
             resources = response.get("body", {}).get("resources", [])
@@ -247,7 +248,8 @@ class HostsModule(BaseModule):
 
     def _get_network_history(self, device_id):
         try:
-            response = self.hosts.query_network_address_history(ids=[device_id])
+            hosts = self._service(Hosts)
+            response = hosts.query_network_address_history(ids=[device_id])
             if response["status_code"] != 200:
                 return {"success": False, "error": format_api_error(response, "Failed to get network history", operation="query_network_address_history")}
             resources = response.get("body", {}).get("resources", [])
