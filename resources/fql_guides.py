@@ -29,15 +29,35 @@ ALERT_FQL = """\
   - Example: `status:'new'`
 - `product` — Array: 'ind' (endpoint), 'ngsiem', 'fcs' (cloud), 'ldt' (identity), 'thirdparty'
   - Example: `product:['ngsiem']`
-- `created_timestamp` — ISO 8601 timestamp
+- `created_timestamp` — ISO 8601 timestamp or relative with `now` keyword
   - Example: `created_timestamp:>='2024-01-01T00:00:00Z'`
+  - Example: `created_timestamp:>='now-15d'`
+- `name` — Alert/detection name (supports wildcard and text match operators)
+  - Exact match: `name:'RunningAsRootContainer'`
+  - Wildcard: `name:*'*MCP*'`
+  - Case-insensitive wildcard: `name:~*'*mcp*'`
 - `assigned_to_name` — Filter by analyst assignment
 - `tags` — Alert tags
 - `type` — Alert type string
 
-## NOT Supported in FQL
-- `name` — Alert name is NOT a valid FQL filter field. Use the `pattern_name` parameter
-  in get_alerts for client-side name filtering instead.
+## FQL Operators
+| Operator | Name | Description | Example |
+|----------|------|-------------|---------|
+| `:` | Equals | Exact match | `status:'new'` |
+| `:!` | Not equals | Negated match | `status:!'closed'` |
+| `:>=` | Greater/equal | Numeric/timestamp comparison | `severity:>=40` |
+| `:<=` | Less/equal | Numeric/timestamp comparison | `severity:<=20` |
+| `:>` | Greater than | Strict comparison | `created_timestamp:>'now-1d'` |
+| `:<` | Less than | Strict comparison | `severity:<30` |
+| `~` | Text match | Tokenized, case/space insensitive | `name:~'mcp server'` |
+| `!~` | Not text match | Negated text match | `name:!~'test'` |
+| `*` | Wildcard | Wildcard matching | `name:*'*MCP*'` |
+| `~*` | Case-insensitive wildcard | Case-insensitive wildcard contains | `name:~*'*mcp*'` |
+| `~*!` | Case-insensitive not wildcard | Negated case-insensitive wildcard | `name:~*!'*test*'` |
+
+## Timestamp Keywords
+- `now` — Current time. Can be used with offsets: `now-15d`, `now-1h`
+  - Example: `created_timestamp:>='now-7d'`
 
 ## Combining Filters
 Use `+` to AND filters together:
@@ -62,6 +82,10 @@ HOST_FQL = """\
 ## Combining Filters
 Use `+` to AND filters together:
   `platform_name:'Windows'+status:'normal'+last_seen:>='2024-06-01T00:00:00Z'`
+
+## Wildcard Operators
+- `*` — Wildcard matching: `hostname:*'*WORK*'`
+- `~*` — Case-insensitive wildcard: `hostname:~*'*work*'`
 """
 
 CLOUD_RISKS_FQL = """\

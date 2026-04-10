@@ -7,9 +7,10 @@ Tools:
 
 from __future__ import annotations
 
+import re
 import time
 from datetime import datetime
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, Optional
 
 from falconpy import NGSIEM
 
@@ -25,7 +26,6 @@ class NGSIEMModule(BaseModule):
 
     def __init__(self, client):
         super().__init__(client)
-        self.falcon = NGSIEM(auth_object=self.client.auth_object)
         self.repository = "search-all"
         self._log(f"Initialized with global repository: {self.repository}")
 
@@ -55,11 +55,12 @@ class NGSIEMModule(BaseModule):
         query: Annotated[str, "The NGSIEM/CQL query to execute"],
         start_time: Annotated[str, "Time range (e.g. '1h', '1d', '7d', '30d')"] = "1d",
         max_results: Annotated[int, "Maximum results to return (default: 100, max: 1000)"] = 100,
+        fields: Annotated[Optional[str], "Comma-separated field names for server-side projection via select()"] = None,
     ) -> str:
         """Execute a CQL query on the search-all repository."""
         max_results = min(max(max_results, 1), 1000)
 
-        result = self._execute_query(query, start_time, max_results)
+        result = self._execute_query(query, start_time, max_results, fields=fields)
 
         if result.get("success"):
             events = result.get("events", [])
@@ -72,6 +73,10 @@ class NGSIEMModule(BaseModule):
                 f"Events Matched: {result['events_matched']:,}",
                 f"Events Returned: {result['events_returned']}",
             ]
+            if result.get("field_projection"):
+                lines.append(f"Field Projection: {', '.join(result['field_projection'])}")
+            if result.get("field_projection_skipped"):
+                lines.append(f"Note: {result['field_projection_skipped']}")
             if result.get("results_truncated"):
                 lines.append(f"Results limited to {max_results} events out of {result['events_matched']} total matches")
             lines.append("")
@@ -93,7 +98,13 @@ class NGSIEMModule(BaseModule):
                 lines.append("- Try longer time ranges like '7d' or '30d'")
                 lines.append("- Use broader queries like '*' to see available data")
 
-            return format_text_response("\n".join(lines), raw=True)
+            return format_text_response(
+                "\n".join(lines),
+                tool_name="ngsiem_query",
+                raw=True,
+                structured_data=result,
+                metadata={"query": result.get("query"), "time_range": start_time},
+            )
         else:
             error_text = (
                 f"NGSIEM Query Failed:\nError: {result.get('error', 'Unknown error')}\n"
@@ -111,14 +122,30 @@ class NGSIEMModule(BaseModule):
         query: str,
         start_time: str = "1d",
         max_results: int = 100,
+        fields: str | None = None,
     ) -> dict:
         """Execute a complete NGSIEM query. Returns result dict."""
+        # Field projection: append | select([...]) to query if fields specified
+        field_projection = None
+        field_projection_skipped = None
+        if fields:
+            field_list = [f.strip() for f in fields.split(",") if f.strip()]
+            if field_list:
+                # Check if query already has select() or table()
+                if re.search(r"\|\s*(?:select|table)\s*\(", query):
+                    field_projection_skipped = "query already contains select() or table()"
+                else:
+                    field_projection = field_list
+                    select_clause = ", ".join(field_list)
+                    query = f"{query} | select([{select_clause}])"
+
         # Add MCP identifier comment for audit/tracking
         timestamped_query = f"// MCP Query - {datetime.now().isoformat()}\n{query}"
 
         # Start search
         try:
-            response = self.falcon.start_search(
+            falcon = self._service(NGSIEM)
+            response = falcon.start_search(
                 repository=self.repository,
                 query_string=timestamped_query,
                 start=start_time,
@@ -164,7 +191,7 @@ class NGSIEMModule(BaseModule):
             timeout = 120  # 2 minute timeout
 
             while time.time() - start < timeout:
-                status_response = self.falcon.get_search_status(
+                status_response = falcon.get_search_status(
                     repository=self.repository,
                     search_id=search_id,
                 )
@@ -201,6 +228,8 @@ class NGSIEMModule(BaseModule):
                         "query": query,  # Original query without MCP comment
                         "time_range": start_time,
                         "events": events,
+                        "field_projection": field_projection,
+                        "field_projection_skipped": field_projection_skipped,
                     }
 
                 if state == "error":
@@ -210,12 +239,12 @@ class NGSIEMModule(BaseModule):
                 time.sleep(2)
 
             # Timeout
-            self.falcon.stop_search(repository=self.repository, id=search_id)
+            falcon.stop_search(repository=self.repository, id=search_id)
             return {"success": False, "error": f"Query timed out after {timeout} seconds"}
 
         except Exception as e:
             try:
-                self.falcon.stop_search(repository=self.repository, id=search_id)
+                falcon.stop_search(repository=self.repository, id=search_id)
             except Exception:
                 pass
             return {"success": False, "error": f"Query execution error: {str(e)}"}
