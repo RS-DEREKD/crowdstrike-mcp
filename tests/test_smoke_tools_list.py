@@ -59,6 +59,8 @@ EXPECTED_READ_TOOLS = {
     "correlation_list_templates",
     "correlation_get_template",
     "spotlight_supported_evaluations",
+    "get_stored_response",
+    "list_stored_responses",
 }
 
 EXPECTED_WRITE_TOOLS = {

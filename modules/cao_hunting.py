@@ -37,11 +37,6 @@ class CAOHuntingModule(BaseModule):
         if not CAO_HUNTING_AVAILABLE:
             raise ImportError("CAOHunting FalconPy class not available. Ensure crowdstrike-falconpy >= 1.6.0 is installed.")
 
-        try:
-            self._cao_hunting = CAOHunting(auth_object=self.client.auth_object)
-        except Exception as e:
-            raise ImportError(f"CAOHunting init failed: {e}") from e
-
         self._log("Initialized")
 
     def register_tools(self, server: FastMCP) -> None:
@@ -287,6 +282,7 @@ class CAOHuntingModule(BaseModule):
 
     def _search_queries(self, filter=None, q=None, sort=None, include_translated_content=False, max_results=20):
         try:
+            cao = self._service(CAOHunting)
             kwargs = {"limit": min(max_results, 100)}
             if filter:
                 kwargs["filter"] = filter
@@ -295,7 +291,7 @@ class CAOHuntingModule(BaseModule):
             if sort:
                 kwargs["sort"] = sort
 
-            r = self._cao_hunting.search_queries(**kwargs)
+            r = cao.search_queries(**kwargs)
             if r["status_code"] != 200:
                 return {
                     "success": False,
@@ -314,11 +310,12 @@ class CAOHuntingModule(BaseModule):
 
     def _get_queries_by_ids(self, ids, include_translated_content=False, total=None):
         try:
+            cao = self._service(CAOHunting)
             kwargs = {"ids": ids}
             if include_translated_content:
                 kwargs["include_translated_content"] = "__all__"
 
-            r = self._cao_hunting.get_queries(**kwargs)
+            r = cao.get_queries(**kwargs)
             if r["status_code"] != 200:
                 return {
                     "success": False,
@@ -353,6 +350,7 @@ class CAOHuntingModule(BaseModule):
 
     def _search_guides(self, filter=None, q=None, sort=None, max_results=20):
         try:
+            cao = self._service(CAOHunting)
             kwargs = {"limit": min(max_results, 100)}
             if filter:
                 kwargs["filter"] = filter
@@ -361,7 +359,7 @@ class CAOHuntingModule(BaseModule):
             if sort:
                 kwargs["sort"] = sort
 
-            r = self._cao_hunting.search_guides(**kwargs)
+            r = cao.search_guides(**kwargs)
             if r["status_code"] != 200:
                 return {
                     "success": False,
@@ -380,7 +378,8 @@ class CAOHuntingModule(BaseModule):
 
     def _get_guides_by_ids(self, ids, total=None):
         try:
-            r = self._cao_hunting.get_guides(ids=ids)
+            cao = self._service(CAOHunting)
+            r = cao.get_guides(ids=ids)
             if r["status_code"] != 200:
                 return {
                     "success": False,
@@ -414,15 +413,16 @@ class CAOHuntingModule(BaseModule):
 
     def _aggregate(self, resource_type, field, agg_type, filter=None, size=10):
         try:
+            cao = self._service(CAOHunting)
             body = [{"field": field, "type": agg_type, "size": size}]
             if filter:
                 body[0]["filter"] = filter
 
             if resource_type == "queries":
-                r = self._cao_hunting.aggregate_queries(body=body)
+                r = cao.aggregate_queries(body=body)
                 op = "aggregate_queries"
             else:
-                r = self._cao_hunting.aggregate_guides(body=body)
+                r = cao.aggregate_guides(body=body)
                 op = "aggregate_guides"
 
             if r["status_code"] != 200:

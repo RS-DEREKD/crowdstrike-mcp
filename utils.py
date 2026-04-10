@@ -12,6 +12,8 @@ from datetime import datetime
 from typing import Dict, List, Optional, Union
 from urllib.parse import parse_qs, unquote, urlparse
 
+from response_store import ResponseStore
+
 # Large response handling
 LARGE_RESPONSE_THRESHOLD = int(os.environ.get("MCP_LARGE_RESPONSE_THRESHOLD", "20000"))
 MCP_OUTPUT_DIR = os.path.join(tempfile.gettempdir(), "crowdstrike-mcp")
@@ -76,38 +78,83 @@ def format_text_response(
     text: str,
     tool_name: str = "",
     raw: bool = False,
+    structured_data: dict | None = None,
+    metadata: dict | None = None,
 ) -> Union[str, List[Dict[str, str]]]:
     """Format a text string as an MCP-compatible response.
 
     If the response exceeds LARGE_RESPONSE_THRESHOLD, writes full output to a
     temp file and returns a compact summary with the file path.
 
+    When ``structured_data`` is provided (opt-in tools), the raw dict is stored
+    in ResponseStore for later field-level extraction via get_stored_response.
+
     Args:
         text: Response text to format.
         tool_name: Tool name for temp file naming.
         raw: If ``True``, return a plain string (for FastMCP compatibility).
              If ``False`` (default), return ``[{"type": "text", "text": ...}]``.
+        structured_data: Raw structured dict from the tool (opt-in).
+        metadata: Query context, filters, alert ID, etc. for the store.
     """
+    ref_id = None
+    if structured_data is not None:
+        ref_id = ResponseStore.store(structured_data, tool_name, metadata)
+
     if len(text) <= LARGE_RESPONSE_THRESHOLD:
+        if ref_id:
+            text = f"{text}\n\n[Structured data available: {ref_id}]"
         return text if raw else [{"type": "text", "text": text}]
 
-    file_path = _write_response_file(text, tool_name or _current_tool_name)
-    summary = _extract_summary(text)
+    # Text exceeds threshold
+    if structured_data is not None and ref_id:
+        # Structured data path — store is already populated
+        summary = _extract_summary(text)
+        record_count = ResponseStore.get(ref_id).record_count if ResponseStore.get(ref_id) else 0
 
-    parts = [
-        summary,
-        "",
-        f"--- RESPONSE TRUNCATED ({len(text):,} chars) ---",
-        f"Full output saved to: {file_path}",
-        "",
-        "To inspect the full data, use bash:",
-        f"  cat '{file_path}' | head -200",
-        f"  python3 -c \"import json; print(open('{file_path}').read()[:5000])\"",
-        f"  grep -i 'keyword' '{file_path}'",
-    ]
+        # Find a context identifier from metadata
+        context_line = ""
+        if metadata:
+            for key in ("detection_id", "query", "filter"):
+                val = metadata.get(key)
+                if val:
+                    context_line = f"\nTool: {tool_name} | {key}: {val}"
+                    break
 
-    result = "\n".join(parts)
-    return result if raw else [{"type": "text", "text": result}]
+        parts = [
+            summary,
+            "",
+            f"--- RESPONSE TRUNCATED ({len(text):,} chars) ---",
+            f"Structured data stored as: {ref_id} ({record_count} records){context_line}",
+            "",
+            "To query this data use the get_stored_response tool:",
+            f'  get_stored_response(ref_id="{ref_id}")                                → metadata overview',
+            f'  get_stored_response(ref_id="{ref_id}", fields="source.ip,user.name")  → extract fields',
+            f'  get_stored_response(ref_id="{ref_id}", search="keyword")              → search records',
+            f'  get_stored_response(ref_id="{ref_id}", record_index=0)                → full first record',
+        ]
+
+        result = "\n".join(parts)
+        return result if raw else [{"type": "text", "text": result}]
+    else:
+        # Legacy path — no structured data, use temp file fallback
+        file_path = _write_response_file(text, tool_name or _current_tool_name)
+        summary = _extract_summary(text)
+
+        parts = [
+            summary,
+            "",
+            f"--- RESPONSE TRUNCATED ({len(text):,} chars) ---",
+            f"Full output saved to: {file_path}",
+            "",
+            "To inspect the full data, use bash:",
+            f"  cat '{file_path}' | head -200",
+            f"  python3 -c \"import json; print(open('{file_path}').read()[:5000])\"",
+            f"  grep -i 'keyword' '{file_path}'",
+        ]
+
+        result = "\n".join(parts)
+        return result if raw else [{"type": "text", "text": result}]
 
 
 def _extract_summary(text: str, max_lines: int = 40) -> str:

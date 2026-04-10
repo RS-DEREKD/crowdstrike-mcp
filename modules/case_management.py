@@ -40,7 +40,6 @@ class CaseManagementModule(BaseModule):
 
     def __init__(self, client):
         super().__init__(client)
-        self.falcon = CaseManagement(auth_object=self.client.auth_object)
         self._log("Initialized")
 
     def register_resources(self, server: FastMCP) -> None:
@@ -468,7 +467,8 @@ class CaseManagementModule(BaseModule):
             if filter:
                 kwargs["filter"] = filter
 
-            response = self.falcon.query_access_tags(**kwargs)
+            falcon = self._service(CaseManagement)
+            response = falcon.query_access_tags(**kwargs)
 
             if response["status_code"] != 200:
                 return format_text_response(
@@ -496,7 +496,8 @@ class CaseManagementModule(BaseModule):
     ) -> str:
         """Get access tag details by ID."""
         try:
-            response = self.falcon.get_access_tags(ids=tag_ids)
+            falcon = self._service(CaseManagement)
+            response = falcon.get_access_tags(ids=tag_ids)
 
             if response["status_code"] != 200:
                 return format_text_response(
@@ -544,7 +545,8 @@ class CaseManagementModule(BaseModule):
                     "type": type,
                 }
             ]
-            response = self.falcon.aggregate_access_tags(body=body)
+            falcon = self._service(CaseManagement)
+            response = falcon.aggregate_access_tags(body=body)
 
             if response["status_code"] != 200:
                 err = format_api_error(response, "Failed to aggregate access tags", operation="aggregates_access_tags_post_v1")
@@ -566,7 +568,8 @@ class CaseManagementModule(BaseModule):
     ) -> str:
         """Get metadata about RTR-collected files attached to a case."""
         try:
-            response = self.falcon.get_rtr_file_metadata(body={"case_id": case_id})
+            falcon = self._service(CaseManagement)
+            response = falcon.get_rtr_file_metadata(body={"case_id": case_id})
 
             if response["status_code"] != 200:
                 err = format_api_error(response, "Failed to get RTR file metadata", operation="entities_get_rtr_file_metadata_post_v1")
@@ -603,7 +606,8 @@ class CaseManagementModule(BaseModule):
     ) -> str:
         """Retrieve recent RTR file collection activity for a case."""
         try:
-            response = self.falcon.get_rtr_recent_files(body={"case_id": case_id})
+            falcon = self._service(CaseManagement)
+            response = falcon.get_rtr_recent_files(body={"case_id": case_id})
 
             if response["status_code"] != 200:
                 err = format_api_error(response, "Failed to get RTR recent files", operation="entities_retrieve_rtr_recent_file_post_v1")
@@ -644,6 +648,7 @@ class CaseManagementModule(BaseModule):
 
     def _query_cases(self, filter=None, q=None, status=None, sort=None, max_results=50):
         try:
+            falcon = self._service(CaseManagement)
             # Build FQL filter
             if status and not filter:
                 filter = f"status:'{status}'"
@@ -660,7 +665,7 @@ class CaseManagementModule(BaseModule):
             if q:
                 kwargs["q"] = q
 
-            response = self.falcon.query_case_ids(**kwargs)
+            response = falcon.query_case_ids(**kwargs)
 
             if response["status_code"] != 200:
                 return {
@@ -679,7 +684,7 @@ class CaseManagementModule(BaseModule):
                 return {"success": True, "cases": [], "count": 0, "total_available": 0}
 
             # Hydrate with full details
-            details_response = self.falcon.get_cases(body={"ids": case_ids})
+            details_response = falcon.get_cases(body={"ids": case_ids})
             if details_response["status_code"] != 200:
                 return {
                     "success": False,
@@ -721,7 +726,8 @@ class CaseManagementModule(BaseModule):
 
     def _get_cases(self, case_ids):
         try:
-            response = self.falcon.get_cases(body={"ids": case_ids})
+            falcon = self._service(CaseManagement)
+            response = falcon.get_cases(body={"ids": case_ids})
 
             if response["status_code"] != 200:
                 return {
@@ -743,6 +749,7 @@ class CaseManagementModule(BaseModule):
 
     def _create_case(self, name, description, severity=30, assigned_to_user_uuid=None, alert_ids=None, event_ids=None, tags=None):
         try:
+            falcon = self._service(CaseManagement)
             # Resolve assignee: explicit > env var > None
             assignee = assigned_to_user_uuid or os.environ.get("CASE_DEFAULT_ASSIGNEE")
 
@@ -767,7 +774,7 @@ class CaseManagementModule(BaseModule):
             if evidence:
                 body["evidence"] = evidence
 
-            response = self.falcon.create_case(body=body)
+            response = falcon.create_case(body=body)
 
             if response["status_code"] not in (200, 201):
                 return {
@@ -788,6 +795,7 @@ class CaseManagementModule(BaseModule):
 
     def _update_case(self, case_id, status=None, severity=None, assigned_to_user_uuid=None, name=None, description=None):
         try:
+            falcon = self._service(CaseManagement)
             # Fetch current case to get version for optimistic concurrency
             current = self._get_cases([case_id])
             if not current.get("success"):
@@ -823,7 +831,7 @@ class CaseManagementModule(BaseModule):
                 "expected_version": version,
             }
 
-            response = self.falcon.update_case_fields(body=body)
+            response = falcon.update_case_fields(body=body)
 
             if response["status_code"] != 200:
                 return {
@@ -841,11 +849,12 @@ class CaseManagementModule(BaseModule):
 
     def _add_alert_evidence(self, case_id, alert_ids):
         try:
+            falcon = self._service(CaseManagement)
             body = {
                 "id": case_id,
                 "alerts": [{"id": aid} for aid in alert_ids],
             }
-            response = self.falcon.add_case_alert_evidence(body=body)
+            response = falcon.add_case_alert_evidence(body=body)
 
             if response["status_code"] != 200:
                 return {
@@ -863,11 +872,12 @@ class CaseManagementModule(BaseModule):
 
     def _add_event_evidence(self, case_id, event_ids):
         try:
+            falcon = self._service(CaseManagement)
             body = {
                 "id": case_id,
                 "events": [{"id": eid} for eid in event_ids],
             }
-            response = self.falcon.add_case_event_evidence(body=body)
+            response = falcon.add_case_event_evidence(body=body)
 
             if response["status_code"] != 200:
                 return {
@@ -885,8 +895,9 @@ class CaseManagementModule(BaseModule):
 
     def _add_tags(self, case_id, tags):
         try:
+            falcon = self._service(CaseManagement)
             body = {"id": case_id, "tags": tags}
-            response = self.falcon.add_case_tags(body=body)
+            response = falcon.add_case_tags(body=body)
 
             if response["status_code"] != 200:
                 return {
@@ -904,8 +915,9 @@ class CaseManagementModule(BaseModule):
 
     def _delete_tags(self, case_id, tags):
         try:
+            falcon = self._service(CaseManagement)
             # delete_case_tags uses query params: id + tag (repeated)
-            response = self.falcon.delete_case_tags(id=case_id, tag=tags)
+            response = falcon.delete_case_tags(id=case_id, tag=tags)
 
             if response["status_code"] != 200:
                 return {
@@ -923,6 +935,7 @@ class CaseManagementModule(BaseModule):
 
     def _upload_file(self, case_id, file_path, description=None):
         try:
+            falcon = self._service(CaseManagement)
             if not os.path.isfile(file_path):
                 return {"success": False, "error": f"File not found: {file_path}"}
 
@@ -930,7 +943,7 @@ class CaseManagementModule(BaseModule):
             if description:
                 kwargs["description"] = description
 
-            response = self.falcon.upload_file(**kwargs)
+            response = falcon.upload_file(**kwargs)
 
             if response["status_code"] not in (200, 201):
                 return {
@@ -948,8 +961,9 @@ class CaseManagementModule(BaseModule):
 
     def _get_fields(self):
         try:
+            falcon = self._service(CaseManagement)
             # Query field IDs first
-            query_response = self.falcon.query_fields()
+            query_response = falcon.query_fields()
 
             if query_response["status_code"] != 200:
                 return {
@@ -966,7 +980,7 @@ class CaseManagementModule(BaseModule):
                 return {"success": True, "fields": [], "raw": []}
 
             # Get field details
-            details_response = self.falcon.get_fields(ids=field_ids)
+            details_response = falcon.get_fields(ids=field_ids)
 
             if details_response["status_code"] != 200:
                 return {

@@ -19,6 +19,8 @@ def case_module(mock_client):
         from modules.case_management import CaseManagementModule
 
         module = CaseManagementModule(mock_client)
+        module._service = lambda cls: mock_cm
+        # Expose the mock for tests that configure return values via module.falcon
         module.falcon = mock_cm
         return module
 

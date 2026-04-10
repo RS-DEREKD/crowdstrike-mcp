@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import sys
 from abc import ABC, abstractmethod
+from contextvars import ContextVar
 from typing import TYPE_CHECKING, Callable
 
 if TYPE_CHECKING:
@@ -19,6 +20,11 @@ if TYPE_CHECKING:
     from client import FalconClient
 
 _VALID_TIERS = {"read", "write"}
+
+# Per-session FalconClient for HTTP transports. Set by session_auth_middleware.
+# Each asyncio task gets its own context copy, so concurrent requests are isolated.
+# Canonical location — common/session_auth.py imports this.
+_session_client: ContextVar["FalconClient | None"] = ContextVar("_session_client", default=None)
 
 
 class BaseModule(ABC):
@@ -43,6 +49,27 @@ class BaseModule(ABC):
 
         Override in subclasses that expose FQL guides or other resources.
         """
+
+    def _get_auth(self):
+        """Get auth object — session-scoped (HTTP) or instance-level (stdio).
+
+        In HTTP mode, session_auth_middleware sets _session_client ContextVar
+        per-request. In stdio mode, the ContextVar is unset and we fall back
+        to the instance-level client passed at construction.
+        """
+        session = _session_client.get()
+        if session is not None:
+            return session.auth_object
+        return self.client.auth_object
+
+    def _service(self, cls):
+        """Create a FalconPy service class bound to the current auth context.
+
+        FalconPy service construction is lightweight (stores auth reference,
+        no HTTP call). The expensive OAuth token exchange is cached by the
+        FalconClient's OAuth2 instance.
+        """
+        return cls(auth_object=self._get_auth())
 
     def _add_tool(
         self,

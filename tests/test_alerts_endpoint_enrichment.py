@@ -16,7 +16,7 @@ def alerts_module(mock_client):
         mock_ngsiem_instance = MagicMock()
         MockNGSIEM.return_value = mock_ngsiem_instance
         module = __import__("modules.alerts", fromlist=["AlertsModule"]).AlertsModule(mock_client)
-        module._ngsiem = mock_ngsiem_instance
+        module._get_ngsiem_service = lambda: mock_ngsiem_instance
         return module
 
 
@@ -28,12 +28,14 @@ class TestEndpointEnrichmentViaNGSIEM:
             "composite_id": "cust:ind:device123:det456",
             "device": {"device_id": "device123"},
         }
-        # Mock NGSIEM search flow
-        alerts_module._ngsiem.start_search.return_value = {
+        # Mock NGSIEM search flow — _get_ngsiem_service returns the mock;
+        # _execute_ngsiem_query calls start_search / get_search_status on it.
+        ngsiem_mock = alerts_module._get_ngsiem_service()
+        ngsiem_mock.start_search.return_value = {
             "status_code": 200,
             "resources": {"id": "search-1"},
         }
-        alerts_module._ngsiem.get_search_status.return_value = {
+        ngsiem_mock.get_search_status.return_value = {
             "status_code": 200,
             "body": {
                 "done": True,
@@ -54,7 +56,7 @@ class TestEndpointEnrichmentViaNGSIEM:
         assert result["behaviors"][0]["#event_simpleName"] == "ProcessRollup2"
 
     def test_enrichment_fails_gracefully_without_ngsiem(self, alerts_module):
-        alerts_module._ngsiem = None
+        alerts_module._get_ngsiem_service = lambda: None
         alert = {
             "composite_id": "cust:ind:device123:det456",
             "device": {"device_id": "device123"},
@@ -77,11 +79,12 @@ class TestEndpointEnrichmentViaNGSIEM:
             "composite_id": "cust:ind:device123:det456",
             "device": {"device_id": "device123"},
         }
-        alerts_module._ngsiem.start_search.return_value = {
+        ngsiem_mock = alerts_module._get_ngsiem_service()
+        ngsiem_mock.start_search.return_value = {
             "status_code": 200,
             "resources": {"id": "search-1"},
         }
-        alerts_module._ngsiem.get_search_status.return_value = {
+        ngsiem_mock.get_search_status.return_value = {
             "status_code": 200,
             "body": {"done": True, "events": []},
         }

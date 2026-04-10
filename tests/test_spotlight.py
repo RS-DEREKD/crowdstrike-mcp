@@ -19,6 +19,8 @@ def spotlight_module(mock_client):
         from modules.spotlight import SpotlightModule
 
         module = SpotlightModule(mock_client)
+        module._service = lambda cls: mock_sel
+        # Expose the mock for tests that configure return values via module.falcon
         module.falcon = mock_sel
         return module
 

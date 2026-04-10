@@ -28,6 +28,7 @@ from utils import (
     extract_detection_id,
     format_text_response,
     parse_composite_id,
+    sanitize_input,
 )
 
 if TYPE_CHECKING:
@@ -47,17 +48,6 @@ class AlertsModule(BaseModule):
 
     def __init__(self, client):
         super().__init__(client)
-        self.alerts = Alerts(auth_object=self.client.auth_object)
-
-        # Create internal NGSIEM instance for enrichment
-        self._ngsiem = None
-
-        if _NGSIEM_AVAILABLE:
-            try:
-                self._ngsiem = NGSIEM(auth_object=self.client.auth_object)
-            except Exception as e:
-                self._log(f"NGSIEM enrichment not available: {e}")
-
         self._log("Initialized")
 
     def register_resources(self, server: FastMCP) -> None:
@@ -115,9 +105,12 @@ class AlertsModule(BaseModule):
         severity: Annotated[str, "Minimum severity level"] = "ALL",
         time_range: Annotated[str, "Time range (e.g. '1h', '6h', '12h', '1d', '7d', '30d')"] = "1d",
         status: Annotated[str, "Filter by alert status"] = "all",
-        pattern_name: Annotated[Optional[str], "Wildcard match on detection/alert name"] = None,
+        pattern_name: Annotated[Optional[str], "Wildcard match on detection/alert name (server-side FQL)"] = None,
         product: Annotated[str, "Filter by detection source/product type"] = "all",
-        max_results: Annotated[int, "Maximum alerts to return (default: 50, max: 200)"] = 50,
+        max_results: Annotated[int, "Maximum alerts to return (default: 50, max: 1000)"] = 50,
+        offset: Annotated[int, "Number of alerts to skip for pagination (default: 0)"] = 0,
+        q: Annotated[Optional[str], "Free-text search across all alert metadata"] = None,
+        summary_mode: Annotated[bool, "Return compact key-fields only (default: false)"] = False,
     ) -> str:
         """Retrieve alerts with flexible filtering across all detection types."""
         result = self._get_alerts(
@@ -127,6 +120,8 @@ class AlertsModule(BaseModule):
             pattern_name=pattern_name,
             product=product,
             max_results=max_results,
+            offset=offset,
+            q=q,
         )
 
         if not result.get("success"):
@@ -142,28 +137,54 @@ class AlertsModule(BaseModule):
         ]
         if pattern_name:
             lines.append(f"Pattern: {pattern_name}")
+        if q:
+            lines.append(f"Search: {q}")
+        if result.get("offset", 0) > 0 or result.get("next_offset") is not None:
+            lines.append(f"Offset: {result.get('offset', 0)} | Next: {result.get('next_offset', 'None')}")
         lines.append("")
 
         if not alerts_list:
             lines.append("No alerts found matching the filters.")
         else:
             for i, a in enumerate(alerts_list, 1):
-                tags_str = f" [{', '.join(a['tags'])}]" if a.get("tags") else ""
-                assigned = f" -> {a['assigned_to']}" if a.get("assigned_to") else ""
-                product_tag = f" ({a['product_name']})" if a.get("product_name") else ""
-                lines.append(f"{i}. [{a['severity']}] {a['name']}{product_tag} (status: {a['status']}{assigned}{tags_str})")
-                lines.append(f"   ID: {a['composite_id']}")
-                lines.append(f"   Created: {a['created_timestamp']}")
-                if a.get("description"):
-                    lines.append(f"   Description: {a['description']}")
-                lines.append("")
+                if summary_mode:
+                    lines.append(f"{i}. [{a['severity']}] {a['name']} ({a.get('product_name', '')}) status={a['status']}")
+                    lines.append(f"   ID: {a['composite_id']}")
+                    tactic = a.get("tactic") or ""
+                    technique = a.get("technique") or ""
+                    if tactic or technique:
+                        lines.append(f"   MITRE: {tactic} / {technique}")
+                    hosts = a.get("host_names")
+                    users = a.get("user_names")
+                    if hosts:
+                        lines.append(f"   Hosts: {', '.join(hosts)}")
+                    if users:
+                        lines.append(f"   Users: {', '.join(users)}")
+                    lines.append("")
+                else:
+                    tags_str = f" [{', '.join(a['tags'])}]" if a.get("tags") else ""
+                    assigned = f" -> {a['assigned_to']}" if a.get("assigned_to") else ""
+                    product_tag = f" ({a['product_name']})" if a.get("product_name") else ""
+                    lines.append(f"{i}. [{a['severity']}] {a['name']}{product_tag} (status: {a['status']}{assigned}{tags_str})")
+                    lines.append(f"   ID: {a['composite_id']}")
+                    lines.append(f"   Created: {a['created_timestamp']}")
+                    if a.get("description"):
+                        lines.append(f"   Description: {a['description']}")
+                    lines.append("")
 
-        return format_text_response("\n".join(lines), raw=True)
+        return format_text_response(
+            "\n".join(lines),
+            tool_name="get_alerts",
+            raw=True,
+            structured_data=result,
+            metadata={"filter": result.get("filter"), "q": q, "time_range": time_range},
+        )
 
     async def alert_analysis(
         self,
         detection_id: Annotated[str, "The composite detection ID to analyze"],
         max_events: Annotated[int, "Maximum related events to retrieve (for NGSIEM)"] = 10,
+        summary_mode: Annotated[bool, "Return compact key-fields only (default: false)"] = False,
     ) -> str:
         """Analyze an alert with type-specific enrichment."""
         detection_id = extract_detection_id(detection_id)
@@ -175,8 +196,14 @@ class AlertsModule(BaseModule):
                 raw=True,
             )
 
-        response_text = self._format_alert_analysis_response(result)
-        return format_text_response(response_text, raw=True)
+        response_text = self._format_alert_analysis_response(result, summary_mode=summary_mode)
+        return format_text_response(
+            response_text,
+            tool_name="alert_analysis",
+            raw=True,
+            structured_data=result,
+            metadata={"detection_id": detection_id},
+        )
 
     async def update_alert_status(
         self,
@@ -212,7 +239,8 @@ class AlertsModule(BaseModule):
 
     def _get_alert_details(self, detection_id):
         try:
-            response = self.alerts.get_alerts_v2(composite_ids=[detection_id])
+            alerts = self._service(Alerts)
+            response = alerts.get_alerts_v2(composite_ids=[detection_id])
             if response["status_code"] != 200:
                 return {"success": False, "error": format_api_error(response, "Failed to get alert", operation="get_alerts_v2")}
             resources = response.get("body", {}).get("resources", [])
@@ -231,8 +259,15 @@ class AlertsModule(BaseModule):
         "INFORMATIONAL": 10,
     }
 
-    def _get_alerts(self, severity="ALL", time_range="1d", status="all", pattern_name=None, product="all", max_results=50):
+    def _get_alerts(self, severity="ALL", time_range="1d", status="all", pattern_name=None, product="all", max_results=50, offset=0, q=None):
         try:
+            alerts = self._service(Alerts)
+            # Input validation
+            max_results = min(max(max_results, 1), 1000)
+            offset = max(offset, 0)
+            if q is not None and not q.strip():
+                q = None
+
             time_units = {"h": "hours", "d": "days"}
             unit = time_range[-1]
             value = int(time_range[:-1])
@@ -252,8 +287,11 @@ class AlertsModule(BaseModule):
             if status.lower() != "all":
                 filter_parts.append(f"status:'{status.lower()}'")
 
-            # NOTE: `name` is NOT a valid FQL filter field for query_alerts_v2.
-            # pattern_name is applied as a client-side post-filter after fetching details.
+            # Server-side name filtering via FQL wildcard (case-insensitive)
+            if pattern_name:
+                sanitized = sanitize_input(pattern_name)
+                sanitized = sanitized.replace("'", "")
+                filter_parts.append(f"name:~*'*{sanitized}*'")
 
             if product.lower() != "all":
                 fql_values = PRODUCT_FQL_MAP.get(product.lower())
@@ -263,14 +301,18 @@ class AlertsModule(BaseModule):
 
             filter_query = "+".join(filter_parts)
 
-            # When post-filtering by name, fetch more to compensate for filtering loss.
-            fetch_limit = min(max_results * 4, 200) if pattern_name else min(max_results, 200)
+            fetch_limit = min(max_results, 1000)
 
-            response = self.alerts.query_alerts_v2(
-                filter=filter_query,
-                limit=fetch_limit,
-                sort="created_timestamp.desc",
-            )
+            query_kwargs = {
+                "filter": filter_query,
+                "limit": fetch_limit,
+                "offset": offset,
+                "sort": "created_timestamp.desc",
+            }
+            if q:
+                query_kwargs["q"] = q
+
+            response = alerts.query_alerts_v2(**query_kwargs)
 
             if response["status_code"] != 200:
                 return {"success": False, "error": format_api_error(response, "Failed to query alerts", operation="query_alerts_v2")}
@@ -283,12 +325,15 @@ class AlertsModule(BaseModule):
                     "success": True,
                     "alerts": [],
                     "count": 0,
-                    "total_available": 0,
+                    "total_available": total_available,
+                    "offset": offset,
+                    "next_offset": None,
                     "filter": filter_query,
+                    "q": q,
                     "time_range": time_range,
                 }
 
-            details_response = self.alerts.get_alerts_v2(composite_ids=alert_ids)
+            details_response = alerts.get_alerts_v2(composite_ids=alert_ids)
             if details_response["status_code"] != 200:
                 return {"success": False, "error": format_api_error(details_response, "Failed to get alert details", operation="get_alerts_v2")}
 
@@ -305,39 +350,40 @@ class AlertsModule(BaseModule):
                 else:
                     api_product_name = str(raw_product) if raw_product else ""
 
-                alert_summaries.append(
-                    {
-                        "composite_id": composite_id,
-                        "name": a.get("name", "Unknown"),
-                        "severity": a.get("severity_name", "Unknown"),
-                        "severity_value": a.get("severity", 0),
-                        "status": a.get("status", "unknown"),
-                        "created_timestamp": a.get("created_timestamp", ""),
-                        "updated_timestamp": a.get("updated_timestamp", ""),
-                        "assigned_to": a.get("assigned_to_name", ""),
-                        "type": a.get("type", ""),
-                        "product": id_info["product_type"],
-                        "product_name": id_info["product_name"],
-                        "api_product": api_product_name,
-                        "tags": a.get("tags", []),
-                        "description": a.get("description", "")[:200],
-                    }
-                )
+                summary = {
+                    "composite_id": composite_id,
+                    "name": a.get("name", "Unknown"),
+                    "severity": a.get("severity_name", "Unknown"),
+                    "severity_value": a.get("severity", 0),
+                    "status": a.get("status", "unknown"),
+                    "created_timestamp": a.get("created_timestamp", ""),
+                    "updated_timestamp": a.get("updated_timestamp", ""),
+                    "assigned_to": a.get("assigned_to_name", ""),
+                    "type": a.get("type", ""),
+                    "product": id_info["product_type"],
+                    "product_name": id_info["product_name"],
+                    "api_product": api_product_name,
+                    "tags": a.get("tags", []),
+                    "description": a.get("description", "")[:200],
+                    "tactic": a.get("tactic"),
+                    "technique": a.get("technique"),
+                    "host_names": a.get("host_names"),
+                    "user_names": a.get("user_names"),
+                }
+                alert_summaries.append(summary)
 
-            # Client-side post-filter by pattern_name (not supported in FQL).
-            if pattern_name:
-                pattern_lower = pattern_name.lower()
-                alert_summaries = [a for a in alert_summaries if pattern_lower in a["name"].lower()]
-
-            # Trim to requested max_results after any post-filtering.
-            alert_summaries = alert_summaries[:max_results]
+            count = len(alert_summaries)
+            next_offset = offset + count if (offset + count) < total_available else None
 
             return {
                 "success": True,
                 "alerts": alert_summaries,
-                "count": len(alert_summaries),
+                "count": count,
                 "total_available": total_available,
+                "offset": offset,
+                "next_offset": next_offset,
                 "filter": filter_query,
+                "q": q,
                 "time_range": time_range,
             }
         except Exception as e:
@@ -345,6 +391,7 @@ class AlertsModule(BaseModule):
 
     def _update_alert_status(self, composite_ids, status, comment=None, tags=None):
         try:
+            alerts = self._service(Alerts)
             valid_statuses = ["new", "in_progress", "closed", "reopened"]
             if status.lower() not in valid_statuses:
                 return {"success": False, "error": f"Invalid status: {status}. Must be one of: {valid_statuses}"}
@@ -355,7 +402,7 @@ class AlertsModule(BaseModule):
             if tags:
                 action_params.extend({"name": "add_tag", "value": tag} for tag in tags)
 
-            response = self.alerts.update_alerts_v3(
+            response = alerts.update_alerts_v3(
                 composite_ids=composite_ids,
                 action_parameters=action_params,
             )
@@ -377,9 +424,20 @@ class AlertsModule(BaseModule):
     # Multi-type alert analysis with enrichment routing
     # ------------------------------------------------------------------
 
+    def _get_ngsiem_service(self):
+        """Try to create an NGSIEM service instance. Returns None if unavailable."""
+        if not _NGSIEM_AVAILABLE:
+            return None
+        try:
+            return self._service(NGSIEM)
+        except Exception as e:
+            self._log(f"NGSIEM enrichment not available: {e}")
+            return None
+
     def _get_related_ngsiem_events(self, composite_id, time_range="1d", max_events=10):
         """Get events related to an NGSIEM alert using CQL queries."""
-        if not self._ngsiem:
+        ngsiem = self._get_ngsiem_service()
+        if not ngsiem:
             return {"success": False, "error": "NGSIEM enrichment not available"}
 
         try:
@@ -396,7 +454,7 @@ class AlertsModule(BaseModule):
             indicator_event = None
 
             for query in indicator_queries:
-                result = self._execute_ngsiem_query(query, time_range, 1)
+                result = self._execute_ngsiem_query(ngsiem, query, time_range, 1)
                 if result.get("success") and result.get("events_matched", 0) > 0:
                     events = result.get("events", [])
                     if events:
@@ -418,7 +476,7 @@ class AlertsModule(BaseModule):
             ]
 
             for query in detection_queries:
-                result = self._execute_ngsiem_query(query, time_range, max_events)
+                result = self._execute_ngsiem_query(ngsiem, query, time_range, max_events)
                 if result.get("success") and result.get("events_matched", 0) > 0:
                     return {
                         "success": True,
@@ -445,14 +503,14 @@ class AlertsModule(BaseModule):
         except Exception as e:
             return {"success": False, "error": f"Error getting related events: {str(e)}"}
 
-    def _execute_ngsiem_query(self, query, start_time="1d", max_results=10):
-        """Execute a CQL query using the internal NGSIEM client."""
+    def _execute_ngsiem_query(self, ngsiem, query, start_time="1d", max_results=10):
+        """Execute a CQL query using the provided NGSIEM service instance."""
         import time as _time
 
         timestamped_query = f"// MCP Query - {datetime.now().isoformat()}\n{query}"
 
         try:
-            response = self._ngsiem.start_search(
+            response = ngsiem.start_search(
                 repository="search-all",
                 query_string=timestamped_query,
                 start=start_time,
@@ -468,7 +526,7 @@ class AlertsModule(BaseModule):
             timeout = 60
 
             while _time.time() - start < timeout:
-                status_response = self._ngsiem.get_search_status(
+                status_response = ngsiem.get_search_status(
                     repository="search-all",
                     search_id=search_id,
                 )
@@ -497,7 +555,7 @@ class AlertsModule(BaseModule):
 
                 _time.sleep(2)
 
-            self._ngsiem.stop_search(repository="search-all", id=search_id)
+            ngsiem.stop_search(repository="search-all", id=search_id)
             return {"success": False, "error": f"Query timed out after {timeout} seconds"}
 
         except Exception as e:
@@ -509,7 +567,8 @@ class AlertsModule(BaseModule):
         The Detects API was decommissioned in March 2026. This method now queries
         NGSIEM for raw EDR events (ProcessRollup2) around the alert's device.
         """
-        if not self._ngsiem:
+        ngsiem = self._get_ngsiem_service()
+        if not ngsiem:
             return {"success": False, "error": "NGSIEM enrichment not available — cannot enrich endpoint alert"}
 
         device_id = alert.get("device", {}).get("device_id", "")
@@ -519,7 +578,7 @@ class AlertsModule(BaseModule):
         query = f'#event_simpleName=ProcessRollup2 aid="{device_id}" | head(20)'
 
         try:
-            result = self._execute_ngsiem_query(query, start_time="24h", max_results=20)
+            result = self._execute_ngsiem_query(ngsiem, query, start_time="24h", max_results=20)
             if not result.get("success"):
                 return {
                     "success": False,
@@ -553,7 +612,7 @@ class AlertsModule(BaseModule):
             "enrichment_note": None,
         }
 
-        if product_type == "ngsiem" and self._ngsiem:
+        if product_type == "ngsiem" and _NGSIEM_AVAILABLE:
             result["enrichment_type"] = "ngsiem_events"
             events_result = self._get_related_ngsiem_events(
                 detection_id,
@@ -603,9 +662,13 @@ class AlertsModule(BaseModule):
 
         return result
 
-    def _format_alert_analysis_response(self, analysis):
+    def _format_alert_analysis_response(self, analysis, summary_mode=False):
         """Format the analyze_alert result into a readable text response."""
         alert = analysis["alert"]
+
+        if summary_mode:
+            return self._format_alert_analysis_summary(analysis)
+
         parts = []
 
         parts.append(f"## Alert Analysis ({analysis['product_name']})")
@@ -727,5 +790,55 @@ class AlertsModule(BaseModule):
             parts.append("### Related Events")
             parts.append("No related events found for this alert.")
             parts.append("")
+
+        return "\n".join(parts)
+
+    def _format_alert_analysis_summary(self, analysis):
+        """Format a compact summary of an alert analysis."""
+        alert = analysis["alert"]
+        parts = []
+        parts.append(f"## Alert Summary ({analysis['product_name']})")
+        parts.append(f"- **Name**: {alert.get('name', 'Unknown')}")
+        parts.append(f"- **ID**: {alert.get('composite_id', 'N/A')}")
+        parts.append(f"- **Severity**: {alert.get('severity_name', 'Unknown')}")
+        parts.append(f"- **Status**: {alert.get('status', 'unknown')}")
+        parts.append(f"- **Tags**: {', '.join(alert.get('tags', [])) or 'None'}")
+
+        behaviors = alert.get("behaviors", [])
+        if behaviors and isinstance(behaviors, list):
+            for b in behaviors[:3]:
+                if isinstance(b, dict):
+                    parts.append(f"- **MITRE**: {b.get('tactic', 'N/A')} / {b.get('technique', 'N/A')}")
+
+        parts.append(f"- **Product**: {analysis['product_name']}")
+
+        events = analysis.get("events") or []
+        total_events = analysis.get("events_matched", len(events))
+        if events:
+            parts.append(f"\n### Related Events (showing {min(5, len(events))} of {total_events})")
+            for i, event in enumerate(events[:5], 1):
+                ts = event.get("@timestamp", "")
+                action = event.get("#event_simpleName") or event.get("event.action", "")
+                host = event.get("ComputerName", "")
+                user = event.get("UserName") or event.get("user.name", "")
+                source = event.get("source")
+                src_ip = source.get("ip", "") if isinstance(source, dict) else event.get("source.ip", "")
+                parts.append(f"  {i}. {ts} | {action} | {host} | {user} | {src_ip}")
+            if len(events) > 5:
+                parts.append(f"\n  Showing 5 of {total_events} related events. Use summary_mode=false for full details.")
+
+        behaviors_data = analysis.get("behaviors") or []
+        if behaviors_data:
+            parts.append(f"\n### Endpoint Behaviors (showing {min(5, len(behaviors_data))} of {len(behaviors_data)})")
+            for i, b in enumerate(behaviors_data[:5], 1):
+                ts = b.get("timestamp", "")
+                tactic = b.get("tactic", "")
+                technique = b.get("technique", "")
+                filename = b.get("filename", "")
+                cmdline = str(b.get("cmdline", ""))[:200]
+                parts.append(f"  {i}. {ts} | {tactic}/{technique} | {filename} | {cmdline}")
+
+        if analysis.get("enrichment_note"):
+            parts.append(f"\n> {analysis['enrichment_note']}")
 
         return "\n".join(parts)

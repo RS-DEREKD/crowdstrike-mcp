@@ -23,7 +23,7 @@ def auth_middleware(app, api_key: str):
     """
 
     async def middleware(scope, receive, send):
-        if scope["type"] == "http":
+        if scope["type"] in ("http", "websocket"):
             request = Request(scope, receive)
             provided = request.headers.get("x-api-key", "")
             if not secrets.compare_digest(provided, api_key):

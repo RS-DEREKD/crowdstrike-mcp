@@ -32,7 +32,6 @@ class CloudRegistrationModule(BaseModule):
         super().__init__(client)
         if not CSPM_AVAILABLE:
             raise ImportError("falconpy.CSPMRegistration not available. Ensure crowdstrike-falconpy >= 1.6.0 is installed.")
-        self.cspm = CSPMRegistration(auth_object=self.client.auth_object)
         self._log("Initialized")
 
     def register_tools(self, server: FastMCP) -> None:
@@ -142,10 +141,11 @@ class CloudRegistrationModule(BaseModule):
 
     def _list_accounts(self, provider=None):
         try:
+            cspm = self._service(CSPMRegistration)
             results = {}
 
             if provider in (None, "aws"):
-                r = self.cspm.get_aws_account()
+                r = cspm.get_aws_account()
                 if r["status_code"] == 200:
                     accounts = r.get("body", {}).get("resources", [])
                     results["aws"] = [
@@ -168,7 +168,7 @@ class CloudRegistrationModule(BaseModule):
                     results["aws_error"] = {"success": False, "error": format_api_error(r, "AWS accounts")}
 
             if provider in (None, "azure"):
-                r = self.cspm.get_azure_account()
+                r = cspm.get_azure_account()
                 if r["status_code"] == 200:
                     accounts = r.get("body", {}).get("resources", [])
                     results["azure"] = [
@@ -200,11 +200,12 @@ class CloudRegistrationModule(BaseModule):
 
     def _get_policy_settings(self, cloud_platform="aws", service=None):
         try:
+            cspm = self._service(CSPMRegistration)
             kwargs = {"cloud_platform": cloud_platform}
             if service:
                 kwargs["filter"] = f"cloud_service:'{service}'"
 
-            r = self.cspm.get_policy_settings(**kwargs)
+            r = cspm.get_policy_settings(**kwargs)
             if r["status_code"] != 200:
                 return {"success": False, "error": format_api_error(r, "Failed to get policy settings", operation="get_policy_settings")}
 

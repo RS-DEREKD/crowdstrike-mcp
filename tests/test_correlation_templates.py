@@ -32,6 +32,8 @@ def correlation_module(mock_client):
         from modules.correlation import CorrelationModule
 
         module = CorrelationModule(mock_client)
+        module._get_correlation_service = lambda: mock_cr
+        # Expose the mock for tests that configure return values via module.falcon
         module.falcon = mock_cr
         return module
 
