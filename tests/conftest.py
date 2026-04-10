@@ -28,3 +28,13 @@ def mock_hosts_api():
 def mock_ngsiem_api():
     """Create a mock NGSIEM FalconPy service class."""
     return MagicMock()
+
+
+@pytest.fixture(autouse=True)
+def reset_response_store():
+    """Reset ResponseStore between tests to prevent state leakage."""
+    from response_store import ResponseStore
+
+    ResponseStore._reset()
+    yield
+    ResponseStore._reset()
