@@ -1,28 +1,24 @@
 """Smoke tests for MCP tool registration — verifies tool visibility with and without allow_writes."""
 
-import os
-import sys
 from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 # FalconPy service classes that modules import and instantiate in __init__.
 # We patch these so no real auth is required.
 _FALCONPY_PATCHES = [
-    "modules.alerts.Alerts",
-    "modules.cao_hunting.CAOHunting",
-    "modules.case_management.CaseManagement",
-    "modules.cloud_registration.CSPMRegistration",
-    "modules.cloud_security.CloudSecurity",
-    "modules.cloud_security.CloudSecurityDetections",
-    "modules.cloud_security.CloudSecurityAssets",
-    "modules.correlation.CorrelationRules",
-    "modules.correlation.APIHarnessV2",
-    "modules.hosts.Hosts",
-    "modules.ngsiem.NGSIEM",
-    "modules.response.Hosts",
-    "modules.spotlight.SpotlightEvaluationLogic",
+    "crowdstrike_mcp.modules.alerts.Alerts",
+    "crowdstrike_mcp.modules.cao_hunting.CAOHunting",
+    "crowdstrike_mcp.modules.case_management.CaseManagement",
+    "crowdstrike_mcp.modules.cloud_registration.CSPMRegistration",
+    "crowdstrike_mcp.modules.cloud_security.CloudSecurity",
+    "crowdstrike_mcp.modules.cloud_security.CloudSecurityDetections",
+    "crowdstrike_mcp.modules.cloud_security.CloudSecurityAssets",
+    "crowdstrike_mcp.modules.correlation.CorrelationRules",
+    "crowdstrike_mcp.modules.correlation.APIHarnessV2",
+    "crowdstrike_mcp.modules.hosts.Hosts",
+    "crowdstrike_mcp.modules.ngsiem.NGSIEM",
+    "crowdstrike_mcp.modules.response.Hosts",
+    "crowdstrike_mcp.modules.spotlight.SpotlightEvaluationLogic",
 ]
 
 # Expected tool sets — update these when adding/removing tools
@@ -83,23 +79,25 @@ EXPECTED_WRITE_TOOLS = {
 def _patch_falconpy():
     """Patch all FalconPy service classes to MagicMock so no real auth is needed."""
     with (
-        patch.multiple("modules.alerts", Alerts=MagicMock()),
-        patch.multiple("modules.cao_hunting", CAOHunting=MagicMock()),
-        patch.multiple("modules.case_management", CaseManagement=MagicMock()),
-        patch.multiple("modules.cloud_registration", CSPMRegistration=MagicMock()),
-        patch.multiple("modules.cloud_security", CloudSecurity=MagicMock(), CloudSecurityDetections=MagicMock(), CloudSecurityAssets=MagicMock()),
-        patch.multiple("modules.correlation", CorrelationRules=MagicMock(), APIHarnessV2=MagicMock()),
-        patch.multiple("modules.hosts", Hosts=MagicMock()),
-        patch.multiple("modules.ngsiem", NGSIEM=MagicMock()),
-        patch.multiple("modules.response", Hosts=MagicMock()),
-        patch.multiple("modules.spotlight", SpotlightEvaluationLogic=MagicMock()),
+        patch.multiple("crowdstrike_mcp.modules.alerts", Alerts=MagicMock()),
+        patch.multiple("crowdstrike_mcp.modules.cao_hunting", CAOHunting=MagicMock()),
+        patch.multiple("crowdstrike_mcp.modules.case_management", CaseManagement=MagicMock()),
+        patch.multiple("crowdstrike_mcp.modules.cloud_registration", CSPMRegistration=MagicMock()),
+        patch.multiple(
+            "crowdstrike_mcp.modules.cloud_security", CloudSecurity=MagicMock(), CloudSecurityDetections=MagicMock(), CloudSecurityAssets=MagicMock()
+        ),
+        patch.multiple("crowdstrike_mcp.modules.correlation", CorrelationRules=MagicMock(), APIHarnessV2=MagicMock()),
+        patch.multiple("crowdstrike_mcp.modules.hosts", Hosts=MagicMock()),
+        patch.multiple("crowdstrike_mcp.modules.ngsiem", NGSIEM=MagicMock()),
+        patch.multiple("crowdstrike_mcp.modules.response", Hosts=MagicMock()),
+        patch.multiple("crowdstrike_mcp.modules.spotlight", SpotlightEvaluationLogic=MagicMock()),
     ):
         yield
 
 
 def _collect_tools(mock_client, allow_writes: bool) -> set[str]:
     """Instantiate all modules and collect registered tool names."""
-    from registry import get_available_modules
+    from crowdstrike_mcp.registry import get_available_modules
 
     with _patch_falconpy():
         modules = get_available_modules(mock_client, allow_writes=allow_writes)

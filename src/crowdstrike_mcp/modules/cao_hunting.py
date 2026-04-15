@@ -13,9 +13,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Annotated, Optional
 
-from common.errors import format_api_error
-from modules.base import BaseModule
-from utils import format_text_response
+from crowdstrike_mcp.common.errors import format_api_error
+from crowdstrike_mcp.modules.base import BaseModule
+from crowdstrike_mcp.utils import format_text_response
 
 if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP

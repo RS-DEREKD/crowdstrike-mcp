@@ -1,22 +1,18 @@
 """Tests for new case management tools added in FalconPy v1.6.1."""
 
 import asyncio
-import os
-import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 
 @pytest.fixture
 def case_module(mock_client):
     """Create CaseManagementModule with mocked API."""
-    with patch("modules.case_management.CaseManagement") as MockCM:
+    with patch("crowdstrike_mcp.modules.case_management.CaseManagement") as MockCM:
         mock_cm = MagicMock()
         MockCM.return_value = mock_cm
-        from modules.case_management import CaseManagementModule
+        from crowdstrike_mcp.modules.case_management import CaseManagementModule
 
         module = CaseManagementModule(mock_client)
         module._service = lambda cls: mock_cm

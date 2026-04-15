@@ -1,0 +1,52 @@
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[project]
+name = "crowdstrike-mcp"
+dynamic = ["version"]
+description = "MCP server for the CrowdStrike Falcon platform"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [{ name = "Will Webster" }]
+keywords = ["crowdstrike", "falcon", "mcp", "security", "model-context-protocol"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Information Technology",
+    "Topic :: Security",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "crowdstrike-falconpy>=1.6.1",
+    "mcp>=1.12.1",
+    "uvicorn>=0.27.0",
+    "python-dotenv>=1.0.0",
+    "starlette>=0.27.0",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=9.0.0", "ruff>=0.8.0"]
+
+[project.scripts]
+crowdstrike-mcp = "crowdstrike_mcp.server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/crowdstrike_mcp"]
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "src/crowdstrike_mcp/_version.py"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 155
+select = ["E", "F", "I"]

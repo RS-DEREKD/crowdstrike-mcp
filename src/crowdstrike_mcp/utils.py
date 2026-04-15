@@ -12,7 +12,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Union
 from urllib.parse import parse_qs, unquote, urlparse
 
-from response_store import ResponseStore
+from crowdstrike_mcp.response_store import ResponseStore
 
 # Large response handling
 LARGE_RESPONSE_THRESHOLD = int(os.environ.get("MCP_LARGE_RESPONSE_THRESHOLD", "20000"))

@@ -11,9 +11,9 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, Annotated, Optional
 
-from modules.base import BaseModule
-from response_store import ResponseStore
-from utils import format_text_response
+from crowdstrike_mcp.modules.base import BaseModule
+from crowdstrike_mcp.response_store import ResponseStore
+from crowdstrike_mcp.utils import format_text_response
 
 if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP

@@ -25,7 +25,8 @@ try:
 except Exception:
     _FALCONPY_VERSION = "unknown"
 
-SERVER_VERSION = "3.1.0"
+from crowdstrike_mcp import __version__ as SERVER_VERSION
+
 USER_AGENT = f"crowdstrike-custom-mcp/{SERVER_VERSION} (falconpy/{_FALCONPY_VERSION}; Python/{platform.python_version()})"
 
 

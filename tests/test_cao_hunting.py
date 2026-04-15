@@ -1,20 +1,16 @@
 """Tests for CAOHuntingModule — intelligence queries and hunting guides."""
 
 import asyncio
-import os
-import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 
 @pytest.fixture
 def cao_module(mock_client):
     """Create a CAOHuntingModule with mocked CAOHunting service."""
-    with patch("modules.cao_hunting.CAOHunting"):
-        from modules.cao_hunting import CAOHuntingModule
+    with patch("crowdstrike_mcp.modules.cao_hunting.CAOHunting"):
+        from crowdstrike_mcp.modules.cao_hunting import CAOHuntingModule
 
         module = CAOHuntingModule(mock_client)
         mock_cao = MagicMock()

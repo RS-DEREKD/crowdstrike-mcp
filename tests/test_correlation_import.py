@@ -1,15 +1,10 @@
 """Tests for correlation_import_to_iac tool — rule-to-YAML conversion."""
 
 import asyncio
-import os
-import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-
 
 MOCK_RULE = {
     "id": "rule-uuid-123",
@@ -44,10 +39,10 @@ MOCK_RULE = {
 @pytest.fixture
 def correlation_module(mock_client):
     """Create CorrelationModule with mocked API."""
-    with patch("modules.correlation.CorrelationRules") as MockCR:
+    with patch("crowdstrike_mcp.modules.correlation.CorrelationRules") as MockCR:
         mock_cr = MagicMock()
         MockCR.return_value = mock_cr
-        from modules.correlation import CorrelationModule
+        from crowdstrike_mcp.modules.correlation import CorrelationModule
 
         module = CorrelationModule(mock_client)
         module._get_correlation_service = lambda: mock_cr
@@ -217,9 +212,9 @@ class TestVendorValidation:
 class TestToolRegistration:
     def test_registers_import_tool(self, mock_client):
         """Write tools register when allow_writes=True."""
-        with patch("modules.correlation.CorrelationRules") as MockCR:
+        with patch("crowdstrike_mcp.modules.correlation.CorrelationRules") as MockCR:
             MockCR.return_value = MagicMock()
-            from modules.correlation import CorrelationModule
+            from crowdstrike_mcp.modules.correlation import CorrelationModule
 
             module = CorrelationModule(mock_client)
             module.allow_writes = True
