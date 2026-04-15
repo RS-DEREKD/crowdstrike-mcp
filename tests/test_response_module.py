@@ -2,13 +2,9 @@
 
 import asyncio
 import json
-import os
-import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 
 MOCK_DEVICE = {
@@ -37,10 +33,10 @@ MOCK_DNC_DEVICE = {
 @pytest.fixture
 def response_module(mock_client):
     """Create ResponseModule with mocked Hosts API."""
-    with patch("modules.response.Hosts") as MockHosts:
+    with patch("crowdstrike_mcp.modules.response.Hosts") as MockHosts:
         mock_hosts = MagicMock()
         MockHosts.return_value = mock_hosts
-        from modules.response import ResponseModule
+        from crowdstrike_mcp.modules.response import ResponseModule
 
         module = ResponseModule(mock_client)
         module._service = lambda cls: mock_hosts
@@ -222,9 +218,9 @@ class TestToolRegistration:
 
     def test_registers_both_tools_when_writes_enabled(self, mock_client):
         """Write tools register when allow_writes=True."""
-        with patch("modules.response.Hosts") as MockHosts:
+        with patch("crowdstrike_mcp.modules.response.Hosts") as MockHosts:
             MockHosts.return_value = MagicMock()
-            from modules.response import ResponseModule
+            from crowdstrike_mcp.modules.response import ResponseModule
 
             module = ResponseModule(mock_client)
             module.allow_writes = True

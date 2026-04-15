@@ -1,12 +1,8 @@
 """Tests for tool-level read/write permission gating."""
 
-import os
-import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 
 @pytest.fixture
@@ -21,7 +17,7 @@ def mock_server():
 @pytest.fixture
 def base_module(mock_client):
     """Create a concrete BaseModule subclass for testing."""
-    from modules.base import BaseModule
+    from crowdstrike_mcp.modules.base import BaseModule
 
     class TestModule(BaseModule):
         def register_tools(self, server):
@@ -82,8 +78,8 @@ class TestRegistryAllowWrites:
 
     def test_allow_writes_false_by_default(self, mock_client):
         """Modules get allow_writes=False when not specified."""
-        with patch("registry.discover_module_classes") as mock_discover:
-            from modules.base import BaseModule
+        with patch("crowdstrike_mcp.registry.discover_module_classes") as mock_discover:
+            from crowdstrike_mcp.modules.base import BaseModule
 
             class FakeModule(BaseModule):
                 def register_tools(self, server):
@@ -91,7 +87,7 @@ class TestRegistryAllowWrites:
 
             mock_discover.return_value = [FakeModule]
 
-            from registry import get_available_modules
+            from crowdstrike_mcp.registry import get_available_modules
 
             modules = get_available_modules(mock_client, allow_writes=False)
             assert len(modules) == 1
@@ -99,8 +95,8 @@ class TestRegistryAllowWrites:
 
     def test_allow_writes_true_propagates(self, mock_client):
         """Modules get allow_writes=True when specified."""
-        with patch("registry.discover_module_classes") as mock_discover:
-            from modules.base import BaseModule
+        with patch("crowdstrike_mcp.registry.discover_module_classes") as mock_discover:
+            from crowdstrike_mcp.modules.base import BaseModule
 
             class FakeModule(BaseModule):
                 def register_tools(self, server):
@@ -108,7 +104,7 @@ class TestRegistryAllowWrites:
 
             mock_discover.return_value = [FakeModule]
 
-            from registry import get_available_modules
+            from crowdstrike_mcp.registry import get_available_modules
 
             modules = get_available_modules(mock_client, allow_writes=True)
             assert len(modules) == 1

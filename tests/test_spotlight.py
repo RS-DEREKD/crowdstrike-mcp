@@ -1,22 +1,18 @@
 """Tests for Spotlight evaluation logic module."""
 
 import asyncio
-import os
-import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 
 @pytest.fixture
 def spotlight_module(mock_client):
     """Create SpotlightModule with mocked API."""
-    with patch("modules.spotlight.SpotlightEvaluationLogic") as MockSEL:
+    with patch("crowdstrike_mcp.modules.spotlight.SpotlightEvaluationLogic") as MockSEL:
         mock_sel = MagicMock()
         MockSEL.return_value = mock_sel
-        from modules.spotlight import SpotlightModule
+        from crowdstrike_mcp.modules.spotlight import SpotlightModule
 
         module = SpotlightModule(mock_client)
         module._service = lambda cls: mock_sel

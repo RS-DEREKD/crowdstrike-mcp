@@ -1,13 +1,9 @@
 """Tests for correlation rule template tools added in FalconPy v1.6.1."""
 
 import asyncio
-import os
-import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 
 MOCK_TEMPLATE = {
@@ -26,10 +22,10 @@ MOCK_TEMPLATE = {
 @pytest.fixture
 def correlation_module(mock_client):
     """Create CorrelationModule with mocked API."""
-    with patch("modules.correlation.CorrelationRules") as MockCR:
+    with patch("crowdstrike_mcp.modules.correlation.CorrelationRules") as MockCR:
         mock_cr = MagicMock()
         MockCR.return_value = mock_cr
-        from modules.correlation import CorrelationModule
+        from crowdstrike_mcp.modules.correlation import CorrelationModule
 
         module = CorrelationModule(mock_client)
         module._get_correlation_service = lambda: mock_cr
