@@ -58,45 +58,61 @@ A modular, multi-transport [Model Context Protocol](https://modelcontextprotocol
 ### File Layout
 
 ```
-mcp/
-├── server.py                  # FastMCP server, CLI, multi-transport
-├── crowdstrike_mcp_server.py  # Legacy entry point (thin shim → server.py)
-├── client.py                  # FalconClient — shared OAuth2 + credential chain
-├── registry.py                # Module auto-discovery via pkgutil
-├── utils.py                   # Response formatting, credential helpers
-├── requirements.txt
+crowdstrike-mcp/
+├── pyproject.toml                     # Package metadata, deps, entry point
+├── src/crowdstrike_mcp/
+│   ├── __init__.py                    # Package root, __version__
+│   ├── server.py                      # FastMCP server, CLI, multi-transport
+│   ├── client.py                      # FalconClient — shared OAuth2 + credential chain
+│   ├── registry.py                    # Module auto-discovery via pkgutil
+│   ├── utils.py                       # Response formatting, credential helpers
+│   ├── response_store.py             # In-memory structured data store
+│   │
+│   ├── modules/                       # Each module = independent tool group
+│   │   ├── base.py                    # BaseModule ABC
+│   │   ├── ngsiem.py                  # CQL query execution
+│   │   ├── alerts.py                  # Alert retrieval, analysis, triage
+│   │   ├── hosts.py                   # Device lookups + login/network history
+│   │   ├── correlation.py             # Detection rule management
+│   │   ├── cloud_registration.py      # Cloud account + CSPM policies
+│   │   ├── cloud_security.py          # Risks, IOMs, assets, compliance
+│   │   ├── case_management.py         # Case lifecycle management
+│   │   ├── cao_hunting.py             # Intelligence queries + hunting guides
+│   │   ├── spotlight.py               # Vulnerability evaluation logic
+│   │   ├── response.py               # Host containment actions
+│   │   └── response_store.py         # Stored response retrieval
+│   │
+│   ├── resources/                     # MCP TextResources (syntax docs)
+│   │   └── fql_guides.py              # FQL + CQL syntax references
+│   │
+│   └── common/                        # Shared infrastructure
+│       ├── errors.py                  # Scope-aware API error handling
+│       ├── api_scopes.py              # Operation → required scope mapping
+│       ├── session_auth.py            # Per-session Falcon auth middleware
+│       ├── health.py                  # Health check endpoint
+│       └── auth_middleware.py         # ASGI API key auth for HTTP transports
 │
-├── modules/                   # Each module = independent tool group
-│   ├── base.py                # BaseModule ABC
-│   ├── ngsiem.py              # CQL query execution
-│   ├── alerts.py              # Alert retrieval, analysis, triage
-│   ├── endpoint.py            # EDR behaviors + process trees
-│   ├── hosts.py               # Device lookups + login/network history
-│   ├── correlation.py         # Detection rule management
-│   ├── cloud_registration.py  # Cloud account + CSPM policies
-│   └── cloud_security.py      # Risks, IOMs, assets, compliance
-│
-├── resources/                 # MCP TextResources (syntax docs)
-│   └── fql_guides.py          # FQL + CQL syntax references
-│
-└── common/                    # Shared infrastructure
-    ├── errors.py              # Scope-aware API error handling
-    ├── api_scopes.py          # Operation → required scope mapping
-    └── auth_middleware.py     # ASGI API key auth for HTTP transports
+├── tests/                             # Unit tests
+└── Dockerfile                         # Container build
 ```
 
 ---
 
 ## Quick Start
 
-### 1. Install dependencies
+### 1. Installation
 
 ```bash
-cd mcp/
-pip install -r requirements.txt
+pip install git+https://github.com/willwebster5/crowdstrike-mcp.git
 ```
 
-Dependencies: `crowdstrike-falconpy>=1.6.0`, `mcp>=1.12.1`, `uvicorn>=0.27.0`, `python-dotenv>=1.0.0`, `starlette>=0.27.0`
+Or for development:
+
+```bash
+git clone https://github.com/willwebster5/crowdstrike-mcp.git
+cd crowdstrike-mcp
+pip install -e .[dev]
+```
 
 ### 2. Configure credentials
 
@@ -125,8 +141,8 @@ Supported `base_url` values: `US1`, `US2`, `EU1`, `USGOV1`, `USGOV2`
 {
   "mcpServers": {
     "crowdstrike": {
-      "command": "/path/to/.venv/bin/python3",
-      "args": ["/path/to/mcp/crowdstrike_mcp_server.py"]
+      "command": "crowdstrike-mcp",
+      "args": ["--allow-writes"]
     }
   }
 }
@@ -137,11 +153,21 @@ Supported `base_url` values: `US1`, `US2`, `EU1`, `USGOV1`, `USGOV2`
 {
   "mcpServers": {
     "crowdstrike": {
-      "command": "python3",
-      "args": ["/path/to/mcp/server.py"]
+      "command": "crowdstrike-mcp",
+      "args": []
     }
   }
 }
+```
+
+### Docker
+
+```bash
+docker build -t crowdstrike-mcp .
+docker run -p 8000:8000 \
+  -e FALCON_CLIENT_ID=... \
+  -e FALCON_CLIENT_SECRET=... \
+  crowdstrike-mcp
 ```
 
 ---
@@ -234,9 +260,9 @@ The server exposes FQL and CQL syntax documentation as MCP TextResources. AI ass
 Standard MCP transport for CLI tools like Claude Code. No additional configuration needed.
 
 ```bash
-python server.py
+crowdstrike-mcp
 # or
-python server.py --transport stdio
+crowdstrike-mcp --transport stdio
 ```
 
 ### SSE (Server-Sent Events)
@@ -244,7 +270,7 @@ python server.py --transport stdio
 HTTP-based transport for web clients and remote connections.
 
 ```bash
-python server.py --transport sse --port 8000
+crowdstrike-mcp --transport sse --port 8000
 ```
 
 ### Streamable HTTP
@@ -252,7 +278,7 @@ python server.py --transport sse --port 8000
 Newer HTTP transport with bidirectional streaming.
 
 ```bash
-python server.py --transport streamable-http --port 8000
+crowdstrike-mcp --transport streamable-http --port 8000
 ```
 
 ### HTTP Authentication
@@ -260,7 +286,7 @@ python server.py --transport streamable-http --port 8000
 For SSE and streamable-http transports, enable API key authentication:
 
 ```bash
-python server.py --transport sse --api-key "your-secret-key"
+crowdstrike-mcp --transport sse --api-key "your-secret-key"
 ```
 
 Clients must include the `x-api-key` header in requests. Authentication uses constant-time comparison to prevent timing attacks.
@@ -270,7 +296,7 @@ Clients must include the `x-api-key` header in requests. Authentication uses con
 ## CLI Reference
 
 ```
-python server.py [OPTIONS]
+crowdstrike-mcp [OPTIONS]
 ```
 
 | Flag | Env Var | Default | Description |
@@ -288,13 +314,13 @@ Load only the modules you need to reduce attack surface and startup time:
 
 ```bash
 # SOC triage workflow — just alerts, NGSIEM, and hosts
-python server.py --modules ngsiem,alerts,hosts
+crowdstrike-mcp --modules ngsiem,alerts,hosts
 
 # Cloud security audit
-python server.py --modules cloudsecurity,cloudregistration
+crowdstrike-mcp --modules cloudsecurity,cloudregistration
 
 # Detection engineering
-python server.py --modules ngsiem,correlation
+crowdstrike-mcp --modules ngsiem,correlation
 ```
 
 **Available module names:** `alerts`, `casemanagement`, `cloudsecurity`, `cloudregistration`, `correlation`, `hosts`, `ngsiem`, `response`
@@ -312,13 +338,13 @@ By default, the server runs in **read-only mode**. Write tools (alert updates, c
 To enable write tools:
 
 ```bash
-python server.py --allow-writes
+crowdstrike-mcp --allow-writes
 ```
 
 Or via environment variable:
 
 ```bash
-FALCON_MCP_ALLOW_WRITES=true python server.py
+FALCON_MCP_ALLOW_WRITES=true crowdstrike-mcp
 ```
 
 #### .mcp.json examples
@@ -328,8 +354,8 @@ FALCON_MCP_ALLOW_WRITES=true python server.py
 {
   "mcpServers": {
     "crowdstrike": {
-      "command": ".venv/bin/python3",
-      "args": ["server.py"]
+      "command": "crowdstrike-mcp",
+      "args": []
     }
   }
 }
@@ -340,8 +366,8 @@ FALCON_MCP_ALLOW_WRITES=true python server.py
 {
   "mcpServers": {
     "crowdstrike": {
-      "command": ".venv/bin/python3",
-      "args": ["server.py", "--allow-writes"]
+      "command": "crowdstrike-mcp",
+      "args": ["--allow-writes"]
     }
   }
 }
@@ -352,8 +378,8 @@ FALCON_MCP_ALLOW_WRITES=true python server.py
 {
   "mcpServers": {
     "crowdstrike": {
-      "command": ".venv/bin/python3",
-      "args": ["server.py", "--modules", "ngsiem,hosts"]
+      "command": "crowdstrike-mcp",
+      "args": ["--modules", "ngsiem,hosts"]
     }
   }
 }
@@ -453,7 +479,6 @@ All modules share a single `OAuth2` token through `FalconClient.auth_object`. Th
 | `alert_analysis` | Alerts | `alerts:read` | |
 | `ngsiem_alert_analysis` | Alerts | `alerts:read` | Alias for `alert_analysis` |
 | `update_alert_status` | Alerts | `alerts:write` | Only write tool for alerts |
-| `endpoint_get_behaviors` | Endpoint | `detects:read` | |
 | `host_lookup` | Hosts | `hosts:read` | |
 | `host_login_history` | Hosts | `hosts:read` | |
 | `host_network_history` | Hosts | `hosts:read` | |
@@ -492,10 +517,10 @@ All modules share a single `OAuth2` token through `FalconClient.auth_object`. Th
 
 ## Adding a New Module
 
-1. Create `modules/your_module.py` with a class extending `BaseModule`:
+1. Create `src/crowdstrike_mcp/modules/your_module.py` with a class extending `BaseModule`:
 
 ```python
-from modules.base import BaseModule
+from crowdstrike_mcp.modules.base import BaseModule
 
 class YourModule(BaseModule):
     def __init__(self, client):
@@ -524,7 +549,7 @@ class YourModule(BaseModule):
 | **403 Forbidden** | Add the required API scopes listed in the error message to your CrowdStrike API client |
 | **Module failed to load** | Check stderr for `[registry] Failed to instantiate ...` — usually a missing FalconPy service class or dependency |
 | **Query timeout** | NG-SIEM queries timeout after 120s. Simplify the query or narrow the time range |
-| **Import error** | Run `pip install -r requirements.txt` — requires `crowdstrike-falconpy>=1.6.0` and `mcp>=1.12.1` |
+| **Import error** | Run `pip install crowdstrike-mcp` or `pip install -e .[dev]` — requires `crowdstrike-falconpy>=1.6.1` and `mcp>=1.12.1` |
 | **SSE connection refused** | Ensure `--host 0.0.0.0` if connecting from a different machine (default binds to localhost only) |
 
 ---
