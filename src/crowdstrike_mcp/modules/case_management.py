@@ -27,9 +27,9 @@ from typing import TYPE_CHECKING, Annotated, Optional
 
 from falconpy import CaseManagement
 
-from common.errors import format_api_error
-from modules.base import BaseModule
-from utils import format_text_response
+from crowdstrike_mcp.common.errors import format_api_error
+from crowdstrike_mcp.modules.base import BaseModule
+from crowdstrike_mcp.utils import format_text_response
 
 if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
@@ -43,7 +43,7 @@ class CaseManagementModule(BaseModule):
         self._log("Initialized")
 
     def register_resources(self, server: FastMCP) -> None:
-        from resources.fql_guides import CASE_FQL
+        from crowdstrike_mcp.resources.fql_guides import CASE_FQL
 
         def _case_fql():
             return CASE_FQL

@@ -21,9 +21,9 @@ from typing import TYPE_CHECKING, Annotated, Optional
 
 from falconpy import Alerts
 
-from common.errors import format_api_error
-from modules.base import BaseModule
-from utils import (
+from crowdstrike_mcp.common.errors import format_api_error
+from crowdstrike_mcp.modules.base import BaseModule
+from crowdstrike_mcp.utils import (
     PRODUCT_FQL_MAP,
     extract_detection_id,
     format_text_response,
@@ -51,7 +51,7 @@ class AlertsModule(BaseModule):
         self._log("Initialized")
 
     def register_resources(self, server: FastMCP) -> None:
-        from resources.fql_guides import ALERT_FQL
+        from crowdstrike_mcp.resources.fql_guides import ALERT_FQL
 
         def _alert_fql():
             return ALERT_FQL

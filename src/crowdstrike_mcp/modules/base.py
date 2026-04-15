@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Callable
 if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
 
-    from client import FalconClient
+    from crowdstrike_mcp.client import FalconClient
 
 _VALID_TIERS = {"read", "write"}
 

@@ -14,8 +14,8 @@ from typing import TYPE_CHECKING, Annotated, Optional
 
 from falconpy import NGSIEM
 
-from modules.base import BaseModule
-from utils import format_text_response
+from crowdstrike_mcp.modules.base import BaseModule
+from crowdstrike_mcp.utils import format_text_response
 
 if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
@@ -30,7 +30,7 @@ class NGSIEMModule(BaseModule):
         self._log(f"Initialized with global repository: {self.repository}")
 
     def register_resources(self, server: FastMCP) -> None:
-        from resources.fql_guides import CQL_SYNTAX
+        from crowdstrike_mcp.resources.fql_guides import CQL_SYNTAX
 
         def _cql_syntax():
             return CQL_SYNTAX
