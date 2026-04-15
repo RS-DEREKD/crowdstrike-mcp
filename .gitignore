@@ -24,3 +24,4 @@ mcp-debug/
 
 # hatch-vcs generated version file
 src/crowdstrike_mcp/_version.py
+dist/
