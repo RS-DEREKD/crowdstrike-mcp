@@ -1,10 +1,10 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [project]
 name = "crowdstrike-mcp"
-version = "3.1.0"
+dynamic = ["version"]
 description = "MCP server for the CrowdStrike Falcon platform"
 readme = "README.md"
 license = "MIT"
@@ -36,6 +36,12 @@ crowdstrike-mcp = "crowdstrike_mcp.server:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/crowdstrike_mcp"]
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "src/crowdstrike_mcp/_version.py"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
