@@ -14,8 +14,8 @@ import sys
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from client import FalconClient
-    from modules.base import BaseModule
+    from crowdstrike_mcp.client import FalconClient
+    from crowdstrike_mcp.modules.base import BaseModule
 
 
 def discover_module_classes() -> list[type[BaseModule]]:
@@ -24,8 +24,8 @@ def discover_module_classes() -> list[type[BaseModule]]:
     Returns:
         List of module classes (not instances), sorted by name.
     """
-    import modules as _pkg
-    from modules.base import BaseModule as _Base
+    import crowdstrike_mcp.modules as _pkg
+    from crowdstrike_mcp.modules.base import BaseModule as _Base
 
     classes: list[type[_Base]] = []
 
@@ -33,7 +33,7 @@ def discover_module_classes() -> list[type[BaseModule]]:
         if module_name == "base":
             continue
 
-        fqn = f"modules.{module_name}"
+        fqn = f"crowdstrike_mcp.modules.{module_name}"
         try:
             mod = importlib.import_module(fqn)
         except Exception as exc:

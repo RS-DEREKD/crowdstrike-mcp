@@ -29,18 +29,14 @@ import argparse
 import os
 import sys
 
-# Ensure the mcp/ directory is on sys.path so that modules, common, etc.
-# are importable regardless of the caller's working directory.
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
 from dotenv import load_dotenv
 
 load_dotenv()
 
 from mcp.server.fastmcp import FastMCP
 
-from client import FalconClient
-from registry import get_available_modules
+from crowdstrike_mcp.client import FalconClient
+from crowdstrike_mcp.registry import get_available_modules
 
 
 class FalconMCPServer:
@@ -117,9 +113,9 @@ class FalconMCPServer:
         """Start an HTTP-based transport (SSE or streamable-http) with middleware stack."""
         import uvicorn
 
-        from client import SERVER_VERSION
-        from common.health import with_health_check
-        from common.session_auth import session_auth_middleware
+        from crowdstrike_mcp.client import SERVER_VERSION
+        from crowdstrike_mcp.common.health import with_health_check
+        from crowdstrike_mcp.common.session_auth import session_auth_middleware
 
         if transport_type == "sse":
             app = self.server.sse_app()
@@ -131,7 +127,7 @@ class FalconMCPServer:
 
         # Layer 2: server access gate (optional)
         if self.api_key:
-            from common.auth_middleware import auth_middleware
+            from crowdstrike_mcp.common.auth_middleware import auth_middleware
 
             app = auth_middleware(app, self.api_key)
             self._log(f"API key authentication enabled for {transport_type}")
