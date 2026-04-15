@@ -11,8 +11,8 @@ import time
 
 from starlette.responses import JSONResponse
 
-from client import FalconClient
-from modules.base import _session_client
+from crowdstrike_mcp.client import FalconClient
+from crowdstrike_mcp.modules.base import _session_client
 
 # Client cache: hash(creds) → (FalconClient, last_access_time)
 _client_cache: dict[str, tuple[FalconClient, float]] = {}

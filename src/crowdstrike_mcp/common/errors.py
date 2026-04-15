@@ -7,7 +7,7 @@ looks up the required API scopes and includes resolution guidance.
 
 from typing import Any
 
-from common.api_scopes import get_required_scopes
+from crowdstrike_mcp.common.api_scopes import get_required_scopes
 
 
 def handle_api_response(response: dict, operation: str | None = None) -> dict[str, Any]:
