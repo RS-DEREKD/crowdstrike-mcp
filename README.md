@@ -111,6 +111,8 @@ Or for development:
 ```bash
 git clone https://github.com/willwebster5/crowdstrike-mcp.git
 cd crowdstrike-mcp
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -e .[dev]
 ```
 
