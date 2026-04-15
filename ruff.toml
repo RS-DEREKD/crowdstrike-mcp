@@ -4,7 +4,10 @@ exclude = ["mcp-debug"]
 
 [lint]
 select = ["E", "F", "I"]
-ignore = ["E402"]  # module-level imports not at top (used for sys.path manipulation)
+ignore = ["E402"]  # module-level imports not at top (load_dotenv() must run before imports)
+
+[lint.isort]
+known-first-party = ["crowdstrike_mcp"]
 
 [format]
 quote-style = "double"

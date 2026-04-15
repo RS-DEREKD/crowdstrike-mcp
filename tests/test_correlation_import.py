@@ -6,7 +6,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 import yaml
 
-
 MOCK_RULE = {
     "id": "rule-uuid-123",
     "name": "AWS - CloudTrail - Suspicious IAM Activity",

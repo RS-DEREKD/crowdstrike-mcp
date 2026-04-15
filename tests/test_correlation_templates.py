@@ -5,7 +5,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-
 MOCK_TEMPLATE = {
     "id": "template-uuid-001",
     "name": "Lateral Movement - RDP Brute Force",

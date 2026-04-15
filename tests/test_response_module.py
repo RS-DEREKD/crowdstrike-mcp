@@ -6,7 +6,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-
 MOCK_DEVICE = {
     "device_id": "abc123",
     "hostname": "PROD-WEB-03",

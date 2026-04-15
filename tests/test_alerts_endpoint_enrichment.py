@@ -8,7 +8,11 @@ import pytest
 @pytest.fixture
 def alerts_module(mock_client):
     """Create AlertsModule with mocked APIs."""
-    with patch("crowdstrike_mcp.modules.alerts.Alerts"), patch("crowdstrike_mcp.modules.alerts._NGSIEM_AVAILABLE", True), patch("crowdstrike_mcp.modules.alerts.NGSIEM") as MockNGSIEM:
+    with (
+        patch("crowdstrike_mcp.modules.alerts.Alerts"),
+        patch("crowdstrike_mcp.modules.alerts._NGSIEM_AVAILABLE", True),
+        patch("crowdstrike_mcp.modules.alerts.NGSIEM") as MockNGSIEM,
+    ):
         mock_ngsiem_instance = MagicMock()
         MockNGSIEM.return_value = mock_ngsiem_instance
         module = __import__("crowdstrike_mcp.modules.alerts", fromlist=["AlertsModule"]).AlertsModule(mock_client)
