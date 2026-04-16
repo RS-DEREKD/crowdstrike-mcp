@@ -33,9 +33,7 @@ class TestTargetProcessIdKeyField:
             },
             tool_name="alert_analysis",
         )
-        result = asyncio.run(
-            response_store_module.get_stored_response(ref_id=ref_id, record_key="288700987")
-        )
+        result = asyncio.run(response_store_module.get_stored_response(ref_id=ref_id, record_key="288700987"))
         data = json.loads(result)
         assert data["TargetProcessId"] == "288700987"
         assert "SearchIndexer.exe" in data["ImageFileName"]

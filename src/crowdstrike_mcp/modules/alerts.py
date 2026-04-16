@@ -742,9 +742,7 @@ class AlertsModule(BaseModule):
             parts.append(f"- **Image**: {triggering_process.get('ImageFileName', 'N/A')}")
             parts.append(f"- **Command**: {triggering_process.get('CommandLine', 'N/A')}")
             parts.append(f"- **PID**: {triggering_process.get('TargetProcessId', 'N/A')}")
-            parts.append(
-                f"- **Record index**: {triggering_process.get('record_index', 'N/A')} (of {total} total, sorted by timestamp)"
-            )
+            parts.append(f"- **Record index**: {triggering_process.get('record_index', 'N/A')} (of {total} total, sorted by timestamp)")
             parts.append("")
 
         behaviors = alert.get("behaviors", [])
@@ -858,9 +856,7 @@ class AlertsModule(BaseModule):
             parts.append(f"- **Image**: {triggering_process.get('ImageFileName', 'N/A')}")
             parts.append(f"- **Command**: {triggering_process.get('CommandLine', 'N/A')}")
             parts.append(f"- **PID**: {triggering_process.get('TargetProcessId', 'N/A')}")
-            parts.append(
-                f"- **Record index**: {triggering_process.get('record_index', 'N/A')} (of {total} total, sorted by timestamp)"
-            )
+            parts.append(f"- **Record index**: {triggering_process.get('record_index', 'N/A')} (of {total} total, sorted by timestamp)")
             parts.append("")
 
         events = analysis.get("events") or []

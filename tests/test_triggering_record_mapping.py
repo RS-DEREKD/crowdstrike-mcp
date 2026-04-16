@@ -12,9 +12,7 @@ def alerts_module(mock_client):
         patch("crowdstrike_mcp.modules.alerts.Alerts"),
         patch("crowdstrike_mcp.modules.alerts._NGSIEM_AVAILABLE", True),
     ):
-        module = __import__(
-            "crowdstrike_mcp.modules.alerts", fromlist=["AlertsModule"]
-        ).AlertsModule(mock_client)
+        module = __import__("crowdstrike_mcp.modules.alerts", fromlist=["AlertsModule"]).AlertsModule(mock_client)
         mock_ngsiem = MagicMock()
         module._service = lambda cls: mock_ngsiem
         module._mock_ngsiem = mock_ngsiem
@@ -39,9 +37,7 @@ class TestBehaviorSorting:
             _make_behavior("111", "\\b.exe", "b.exe", "2026-04-15T10:02:00Z"),
             _make_behavior("222", "\\a.exe", "a.exe", "2026-04-15T10:01:00Z"),
         ]
-        alerts_module._get_behaviors_for_alert = MagicMock(
-            return_value={"success": True, "behaviors": behaviors}
-        )
+        alerts_module._get_behaviors_for_alert = MagicMock(return_value={"success": True, "behaviors": behaviors})
         alerts_module._get_alert_details = MagicMock(
             return_value={
                 "success": True,
@@ -63,9 +59,7 @@ class TestBehaviorSorting:
             _make_behavior("111", "\\b.exe", "b.exe", "2026-04-15T10:02:00Z"),
             {"TargetProcessId": "222", "ImageFileName": "\\c.exe"},  # no @timestamp
         ]
-        alerts_module._get_behaviors_for_alert = MagicMock(
-            return_value={"success": True, "behaviors": behaviors}
-        )
+        alerts_module._get_behaviors_for_alert = MagicMock(return_value={"success": True, "behaviors": behaviors})
         alerts_module._get_alert_details = MagicMock(
             return_value={
                 "success": True,
@@ -93,9 +87,7 @@ class TestTriggeringProcessPopulation:
                 "2026-04-15T10:02:00Z",
             ),
         ]
-        alerts_module._get_behaviors_for_alert = MagicMock(
-            return_value={"success": True, "behaviors": behaviors}
-        )
+        alerts_module._get_behaviors_for_alert = MagicMock(return_value={"success": True, "behaviors": behaviors})
         alerts_module._get_alert_details = MagicMock(
             return_value={
                 "success": True,
@@ -106,9 +98,7 @@ class TestTriggeringProcessPopulation:
             }
         )
 
-        result = alerts_module._analyze_alert(
-            "cust:ind:sub:288700987-10357-1549328", max_events=5
-        )
+        result = alerts_module._analyze_alert("cust:ind:sub:288700987-10357-1549328", max_events=5)
         assert result["triggering_pid"] == "288700987"
         assert result["triggering_record_index"] == 1  # after sorting, it's second (later timestamp)
         tp = result["triggering_process"]
@@ -123,9 +113,7 @@ class TestTriggeringProcessPopulation:
         behaviors = [
             _make_behavior("111", "\\other.exe", "other.exe", "2026-04-15T10:01:00Z"),
         ]
-        alerts_module._get_behaviors_for_alert = MagicMock(
-            return_value={"success": True, "behaviors": behaviors}
-        )
+        alerts_module._get_behaviors_for_alert = MagicMock(return_value={"success": True, "behaviors": behaviors})
         alerts_module._get_alert_details = MagicMock(
             return_value={
                 "success": True,
@@ -142,9 +130,7 @@ class TestTriggeringProcessPopulation:
         assert result["triggering_record_index"] is None
 
     def test_empty_behaviors_returns_none_gracefully(self, alerts_module):
-        alerts_module._get_behaviors_for_alert = MagicMock(
-            return_value={"success": True, "behaviors": []}
-        )
+        alerts_module._get_behaviors_for_alert = MagicMock(return_value={"success": True, "behaviors": []})
         alerts_module._get_alert_details = MagicMock(
             return_value={
                 "success": True,
@@ -155,9 +141,7 @@ class TestTriggeringProcessPopulation:
             }
         )
 
-        result = alerts_module._analyze_alert(
-            "cust:ind:sub:288700987-10357-1549328", max_events=5
-        )
+        result = alerts_module._analyze_alert("cust:ind:sub:288700987-10357-1549328", max_events=5)
         assert result["triggering_process"] is None
 
     def test_non_endpoint_alert_has_no_triggering_process(self, alerts_module):
@@ -288,9 +272,7 @@ class TestAlertAnalysisMetadataWiring:
         alerts_module._format_alert_analysis_response = MagicMock(return_value="body")
 
         with patch("crowdstrike_mcp.modules.alerts.format_text_response", side_effect=capture_format):
-            asyncio.run(
-                alerts_module.alert_analysis("cust:ind:sub:288700987-10357-1549328", max_events=5)
-            )
+            asyncio.run(alerts_module.alert_analysis("cust:ind:sub:288700987-10357-1549328", max_events=5))
 
         assert "metadata" in captured
         assert captured["metadata"].get("triggering_pid") == "288700987"
@@ -324,8 +306,6 @@ class TestAlertAnalysisMetadataWiring:
         alerts_module._format_alert_analysis_response = MagicMock(return_value="body")
 
         with patch("crowdstrike_mcp.modules.alerts.format_text_response", side_effect=capture_format):
-            asyncio.run(
-                alerts_module.alert_analysis("cust:ngsiem:cust:indicator-uuid", max_events=5)
-            )
+            asyncio.run(alerts_module.alert_analysis("cust:ngsiem:cust:indicator-uuid", max_events=5))
 
         assert captured["metadata"].get("triggering_pid") is None
