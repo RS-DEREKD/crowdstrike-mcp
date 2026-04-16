@@ -17,7 +17,8 @@ from __future__ import annotations
 import asyncio
 import json
 import time as _time
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Annotated, Optional
 
@@ -474,12 +475,7 @@ class AlertsModule(BaseModule):
             detection_id_from_event = None
 
             executor = ThreadPoolExecutor(max_workers=3)
-            futures = {
-                executor.submit(
-                    self._execute_ngsiem_query, q, time_range, 1, deadline, queries_executed
-                ): q
-                for q in indicator_queries
-            }
+            futures = {executor.submit(self._execute_ngsiem_query, q, time_range, 1, deadline, queries_executed): q for q in indicator_queries}
             try:
                 for future in as_completed(futures, timeout=remaining):
                     result = future.result()
@@ -487,10 +483,7 @@ class AlertsModule(BaseModule):
                         events = result.get("events", [])
                         if events:
                             indicator_event = events[0]
-                            detection_id_from_event = (
-                                indicator_event.get("Ngsiem.detection.id")
-                                or indicator_event.get("detection.id")
-                            )
+                            detection_id_from_event = indicator_event.get("Ngsiem.detection.id") or indicator_event.get("detection.id")
                             break
             except FuturesTimeoutError:
                 pass
@@ -511,9 +504,7 @@ class AlertsModule(BaseModule):
             ]
 
             for query in detection_queries:
-                result = self._execute_ngsiem_query(
-                    query, time_range, max_events, deadline, queries_executed
-                )
+                result = self._execute_ngsiem_query(query, time_range, max_events, deadline, queries_executed)
                 if result.get("success") and result.get("events_matched", 0) > 0:
                     success_result = {
                         "success": True,

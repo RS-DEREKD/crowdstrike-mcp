@@ -11,9 +11,7 @@ from crowdstrike_mcp.modules.alerts import AlertsModule
 @pytest.fixture
 def alerts_module(mock_client):
     """AlertsModule with NGSIEM available and APIs mocked."""
-    with patch("crowdstrike_mcp.modules.alerts.Alerts"), patch(
-        "crowdstrike_mcp.modules.alerts._NGSIEM_AVAILABLE", True
-    ):
+    with patch("crowdstrike_mcp.modules.alerts.Alerts"), patch("crowdstrike_mcp.modules.alerts._NGSIEM_AVAILABLE", True):
         module = AlertsModule(mock_client)
         mock_ngsiem = MagicMock()
         module._service = lambda cls: mock_ngsiem
@@ -37,9 +35,7 @@ class TestExecuteNgsiemQueryDeadline:
         }
         # Deadline already in the past
         expired_deadline = _time.time() - 1.0
-        result = alerts_module._execute_ngsiem_query(
-            "test query", "1d", 10, deadline=expired_deadline
-        )
+        result = alerts_module._execute_ngsiem_query("test query", "1d", 10, deadline=expired_deadline)
         assert result["success"] is False
         assert result.get("timed_out") is True
         # stop_search should have been called to clean up
@@ -71,9 +67,7 @@ class TestExecuteNgsiemQueryDeadline:
             "body": {"done": True, "events": []},
         }
         queries_executed = []
-        alerts_module._execute_ngsiem_query(
-            "my CQL query", "1d", 5, queries_executed=queries_executed
-        )
+        alerts_module._execute_ngsiem_query("my CQL query", "1d", 5, queries_executed=queries_executed)
         assert len(queries_executed) == 1
         assert "my CQL query" in queries_executed[0]
 
@@ -101,9 +95,7 @@ class TestNgsiemEventCache:
         assert len(alerts_module._ngsiem_event_cache) == 0
 
     def test_two_instances_have_separate_caches(self, mock_client):
-        with patch("crowdstrike_mcp.modules.alerts.Alerts"), patch(
-            "crowdstrike_mcp.modules.alerts._NGSIEM_AVAILABLE", True
-        ):
+        with patch("crowdstrike_mcp.modules.alerts.Alerts"), patch("crowdstrike_mcp.modules.alerts._NGSIEM_AVAILABLE", True):
             m1 = AlertsModule(mock_client)
             m2 = AlertsModule(mock_client)
             m1._ngsiem_event_cache[("key", "1d")] = {"success": True}
@@ -142,9 +134,7 @@ class TestParallelIndicatorQueries:
         execute_called = []
         alerts_module._execute_ngsiem_query = lambda *a, **kw: execute_called.append(1) or {"success": False}
 
-        result = alerts_module._get_related_ngsiem_events(
-            "cust:ngsiem:cust:indicator-uuid", time_range="1d", max_events=5
-        )
+        result = alerts_module._get_related_ngsiem_events("cust:ngsiem:cust:indicator-uuid", time_range="1d", max_events=5)
         assert result == cached
         assert len(execute_called) == 0  # no queries fired
 
@@ -164,9 +154,7 @@ class TestParallelIndicatorQueries:
 
         alerts_module._execute_ngsiem_query = fake_execute
 
-        result = alerts_module._get_related_ngsiem_events(
-            "cust:ngsiem:cust:indicator-uuid", time_range="1d", max_events=5
-        )
+        result = alerts_module._get_related_ngsiem_events("cust:ngsiem:cust:indicator-uuid", time_range="1d", max_events=5)
         assert result.get("success") is True
         cache_key = ("cust:ngsiem:cust:indicator-uuid", "1d")
         assert cache_key in alerts_module._ngsiem_event_cache
@@ -175,9 +163,7 @@ class TestParallelIndicatorQueries:
         """A failed/timed-out result is not stored in cache."""
         alerts_module._execute_ngsiem_query = lambda *a, **kw: {"success": False, "events_matched": 0}
 
-        alerts_module._get_related_ngsiem_events(
-            "cust:ngsiem:cust:no-match", time_range="1d", max_events=5
-        )
+        alerts_module._get_related_ngsiem_events("cust:ngsiem:cust:no-match", time_range="1d", max_events=5)
         cache_key = ("cust:ngsiem:cust:no-match", "1d")
         assert cache_key not in alerts_module._ngsiem_event_cache
 
@@ -206,18 +192,22 @@ class TestAnalyzeAlertGracefulFallback:
 
     def test_graceful_fallback_on_enrichment_failure(self, alerts_module):
         """When NGSIEM enrichment fails, result has enrichment_note and raw alert — no exception."""
-        alerts_module._get_alert_details = MagicMock(return_value={
-            "success": True,
-            "alert": {
-                "composite_id": "cust:ngsiem:cust:indicator-uuid",
-                "name": "Test Detection",
-            },
-        })
-        alerts_module._get_related_ngsiem_events = MagicMock(return_value={
-            "success": False,
-            "timed_out": True,
-            "error": "Deadline exceeded",
-        })
+        alerts_module._get_alert_details = MagicMock(
+            return_value={
+                "success": True,
+                "alert": {
+                    "composite_id": "cust:ngsiem:cust:indicator-uuid",
+                    "name": "Test Detection",
+                },
+            }
+        )
+        alerts_module._get_related_ngsiem_events = MagicMock(
+            return_value={
+                "success": False,
+                "timed_out": True,
+                "error": "Deadline exceeded",
+            }
+        )
 
         result = alerts_module._analyze_alert("cust:ngsiem:cust:indicator-uuid", max_events=5)
         assert result["success"] is True
@@ -228,15 +218,17 @@ class TestAnalyzeAlertGracefulFallback:
 
     def test_queries_executed_attached_to_result(self, alerts_module):
         """ngsiem_queries_executed is always attached to result for ngsiem alerts."""
-        alerts_module._get_alert_details = MagicMock(return_value={
-            "success": True,
-            "alert": {"composite_id": "cust:ngsiem:cust:indicator-uuid"},
-        })
+        alerts_module._get_alert_details = MagicMock(
+            return_value={
+                "success": True,
+                "alert": {"composite_id": "cust:ngsiem:cust:indicator-uuid"},
+            }
+        )
 
         def fake_enrichment(*args, **kwargs):
             qe = kwargs.get("queries_executed")
             if qe is not None:
-                qe.append("// MCP Query\nNgsiem.indicator.id = \"indicator-uuid\"")
+                qe.append('// MCP Query\nNgsiem.indicator.id = "indicator-uuid"')
             return {"success": False, "error": "no match"}
 
         alerts_module._get_related_ngsiem_events = fake_enrichment
@@ -247,12 +239,14 @@ class TestAnalyzeAlertGracefulFallback:
 
     def test_non_ngsiem_alert_has_no_queries_executed(self, alerts_module):
         """endpoint alerts don't populate ngsiem_queries_executed."""
-        alerts_module._get_alert_details = MagicMock(return_value={
-            "success": True,
-            "alert": {
-                "composite_id": "cust:thirdparty:cust:alert-id",
-            },
-        })
+        alerts_module._get_alert_details = MagicMock(
+            return_value={
+                "success": True,
+                "alert": {
+                    "composite_id": "cust:thirdparty:cust:alert-id",
+                },
+            }
+        )
         result = alerts_module._analyze_alert("cust:thirdparty:cust:alert-id", max_events=5)
         # thirdparty alerts don't call NGSIEM enrichment — no queries_executed key expected
         assert result.get("ngsiem_queries_executed") is None or result.get("ngsiem_queries_executed") == []
@@ -261,10 +255,12 @@ class TestAnalyzeAlertGracefulFallback:
         """The deadline passed to _get_related_ngsiem_events is approximately now + 45s."""
         received_deadline = []
 
-        alerts_module._get_alert_details = MagicMock(return_value={
-            "success": True,
-            "alert": {"composite_id": "cust:ngsiem:cust:indicator-uuid"},
-        })
+        alerts_module._get_alert_details = MagicMock(
+            return_value={
+                "success": True,
+                "alert": {"composite_id": "cust:ngsiem:cust:indicator-uuid"},
+            }
+        )
 
         def capture_deadline(*args, **kwargs):
             received_deadline.append(kwargs.get("deadline"))
