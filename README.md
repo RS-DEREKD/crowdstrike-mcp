@@ -103,7 +103,7 @@ crowdstrike-mcp/
 ### 1. Installation
 
 ```bash
-pip install git+https://github.com/willwebster5/crowdstrike-mcp.git
+pip install crowdstrike-mcp
 ```
 
 Or for development:
