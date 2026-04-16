@@ -34,7 +34,23 @@ _KEY_FIELDS = [
 
 
 def _get_nested(d: dict, dot_path: str):
-    """Navigate a nested dict by dot-separated path. Returns None on miss."""
+    """Resolve a dotted field path against a record.
+
+    Supports both flat dotted keys (as produced by ``ngsiem_query``) and
+    nested dicts (as produced by ``alert_analysis``):
+
+      * First tries a literal key lookup (``d["source.ip"]``) — this handles
+        CQL-style flat records where the dot is part of the key name.
+      * Falls back to splitting on ``.`` and walking the nested dict.
+
+    Returns ``None`` on miss.
+    """
+    if not isinstance(d, dict):
+        return None
+    # Literal-key lookup first: handles flat dotted keys like "source.ip".
+    if dot_path in d:
+        return d[dot_path]
+    # Otherwise walk the nested dict.
     keys = dot_path.split(".")
     current = d
     for key in keys:
@@ -174,6 +190,23 @@ class ResponseStoreModule(BaseModule):
         if fields:
             flat = [r for lst in records.values() for r in lst][:max_results]
             projected = [self._project_fields(r, fields) for r in flat]
+            if projected and self._all_projections_null(projected):
+                # Surface a discoverable warning instead of silently returning
+                # a list of all-null dicts. Helps callers recover when field
+                # paths don't match the underlying record shape (e.g., CQL
+                # field names on alert_analysis-stored data).
+                all_flat = [r for lst in records.values() for r in lst]
+                top_keys = self._top_level_keys(all_flat)
+                warning_lines = [
+                    "Warning: all requested fields returned null for every record.",
+                    f"Requested fields: {fields}",
+                    f"Available top-level keys: [{', '.join(top_keys) if top_keys else '(none)'}]",
+                    "Tip: call get_stored_response(ref_id=..., record_index=0) to inspect the actual schema.",
+                    "",
+                    "Projected data (all nulls):",
+                    json.dumps(projected, indent=2, default=str),
+                ]
+                return format_text_response("\n".join(warning_lines), raw=True)
             return format_text_response(
                 json.dumps(projected, indent=2, default=str),
                 raw=True,
@@ -296,6 +329,25 @@ class ResponseStoreModule(BaseModule):
         for f in field_list:
             result[f] = _get_nested(record, f)
         return result
+
+    @staticmethod
+    def _all_projections_null(projections: list[dict]) -> bool:
+        """Return True iff every value across every projected record is None.
+
+        Used to decide whether to surface the all-null warning: if a field
+        extraction yields only None values, the caller almost certainly used
+        wrong field paths (the common case is CQL-style flat keys against
+        alert_analysis-stored nested data).
+        """
+        if not projections:
+            return False
+        for proj in projections:
+            if not isinstance(proj, dict):
+                return False
+            for v in proj.values():
+                if v is not None:
+                    return False
+        return True
 
     @staticmethod
     def _find_by_key(records: list[dict], key_value: str) -> dict | None:

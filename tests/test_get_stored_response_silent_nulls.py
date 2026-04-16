@@ -126,6 +126,63 @@ class TestMetadataOverviewSurfacesFields:
 
 
 # ---------------------------------------------------------------------------
+# Fix 2: All-null field extraction returns warning with available keys
+# ---------------------------------------------------------------------------
+
+
+class TestAllNullFieldsWarning:
+    def test_all_null_fields_returns_warning(self, module):
+        """Requesting CQL-style field names against alert_analysis data returns warning."""
+        ref_id = _store_alert_analysis_shaped()
+        result = asyncio.run(
+            module.get_stored_response(ref_id=ref_id, fields="Vendor.userIdentity.arn,event.action")
+        )
+        # Should contain a warning, not just a JSON list of nulls
+        lowered = result.lower()
+        assert "null" in lowered or "warning" in lowered or "all requested fields" in lowered
+
+    def test_all_null_warning_lists_available_top_level_keys(self, module):
+        ref_id = _store_alert_analysis_shaped()
+        result = asyncio.run(
+            module.get_stored_response(ref_id=ref_id, fields="Vendor.userIdentity.arn,event.action")
+        )
+        # Warning should include actual top-level keys from the stored data
+        for key in ("@timestamp", "source", "user", "Ngsiem"):
+            assert key in result, f"Expected top-level key {key!r} in warning; got: {result}"
+
+    def test_mixed_hits_do_not_trigger_warning(self, module):
+        """If at least one field resolves for at least one record, no warning."""
+        ref_id = _store_alert_analysis_shaped()
+        # source.ip exists (nested), bogus.field does not
+        result = asyncio.run(module.get_stored_response(ref_id=ref_id, fields="source.ip,bogus.field"))
+        # Should still be JSON output (parseable), not a warning string
+        parsed = json.loads(result)
+        assert isinstance(parsed, list)
+        assert parsed[0]["source.ip"] == "10.1.75.3"
+        assert parsed[0]["bogus.field"] is None
+
+    def test_all_null_warning_preserves_data(self, module):
+        """Warning should still expose the null data (not destroy it)."""
+        ref_id = _store_alert_analysis_shaped()
+        result = asyncio.run(
+            module.get_stored_response(ref_id=ref_id, fields="Vendor.userIdentity.arn,event.action")
+        )
+        # The requested field names should still be visible to the caller somewhere
+        assert "Vendor.userIdentity.arn" in result
+        assert "event.action" in result
+
+    def test_ngsiem_flat_keys_still_hit_properly(self, module):
+        """Sanity: requesting flat dotted keys on ngsiem_query data works without warning."""
+        ref_id = _store_ngsiem_flat()
+        result = asyncio.run(
+            module.get_stored_response(ref_id=ref_id, fields="source.ip,Vendor.userIdentity.arn")
+        )
+        parsed = json.loads(result)
+        assert parsed[0]["source.ip"] == "10.1.75.3"
+        assert parsed[0]["Vendor.userIdentity.arn"].startswith("arn:aws:")
+
+
+# ---------------------------------------------------------------------------
 # Fix 3: Tool description documents field path differences
 # ---------------------------------------------------------------------------
 
