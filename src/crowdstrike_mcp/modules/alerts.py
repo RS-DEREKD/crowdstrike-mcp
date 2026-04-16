@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time as _time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError, as_completed
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Annotated, Optional
 
@@ -48,6 +50,7 @@ class AlertsModule(BaseModule):
 
     def __init__(self, client):
         super().__init__(client)
+        self._ngsiem_event_cache: dict[tuple[str, str], dict] = {}
         self._log("Initialized")
 
     def register_resources(self, server: FastMCP) -> None:
@@ -503,11 +506,28 @@ class AlertsModule(BaseModule):
         except Exception as e:
             return {"success": False, "error": f"Error getting related events: {str(e)}"}
 
-    def _execute_ngsiem_query(self, ngsiem, query, start_time="1d", max_results=10):
-        """Execute a CQL query using the provided NGSIEM service instance."""
-        import time as _time
+    def _execute_ngsiem_query(
+        self,
+        query,
+        start_time="1d",
+        max_results=10,
+        deadline=float("inf"),
+        queries_executed=None,
+    ):
+        """Execute a CQL query using the NGSIEM service.
+
+        Supports a caller-supplied ``deadline`` (epoch seconds) that triggers an
+        early abort before the normal 60s timeout. When provided, ``queries_executed``
+        receives the timestamped CQL string for debug inspection.
+        """
+        ngsiem = self._get_ngsiem_service()
+        if not ngsiem:
+            return {"success": False, "error": "NGSIEM enrichment not available"}
 
         timestamped_query = f"// MCP Query - {datetime.now().isoformat()}\n{query}"
+
+        if queries_executed is not None:
+            queries_executed.append(timestamped_query)
 
         try:
             response = ngsiem.start_search(
@@ -526,6 +546,11 @@ class AlertsModule(BaseModule):
             timeout = 60
 
             while _time.time() - start < timeout:
+                # Check caller-supplied deadline first (fires before 60s for NGSIEM alerts)
+                if _time.time() >= deadline:
+                    ngsiem.stop_search(repository="search-all", id=search_id)
+                    return {"success": False, "timed_out": True, "error": "Deadline exceeded"}
+
                 status_response = ngsiem.get_search_status(
                     repository="search-all",
                     search_id=search_id,
@@ -578,7 +603,7 @@ class AlertsModule(BaseModule):
         query = f'#event_simpleName=ProcessRollup2 aid="{device_id}" | head(20)'
 
         try:
-            result = self._execute_ngsiem_query(ngsiem, query, start_time="24h", max_results=20)
+            result = self._execute_ngsiem_query(query, start_time="24h", max_results=20)
             if not result.get("success"):
                 return {
                     "success": False,
