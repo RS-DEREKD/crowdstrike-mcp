@@ -1,7 +1,7 @@
 FROM python:3.12-slim
 WORKDIR /app
-COPY . .
-RUN pip install --no-cache-dir .
+COPY dist/*.whl /tmp/
+RUN pip install --no-cache-dir /tmp/*.whl && rm /tmp/*.whl
 RUN useradd -r -s /bin/false mcp
 USER mcp
 EXPOSE 8000
