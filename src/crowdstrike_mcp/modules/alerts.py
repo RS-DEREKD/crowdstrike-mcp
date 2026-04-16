@@ -437,11 +437,26 @@ class AlertsModule(BaseModule):
             self._log(f"NGSIEM enrichment not available: {e}")
             return None
 
-    def _get_related_ngsiem_events(self, composite_id, time_range="1d", max_events=10):
-        """Get events related to an NGSIEM alert using CQL queries."""
-        ngsiem = self._get_ngsiem_service()
-        if not ngsiem:
+    def _get_related_ngsiem_events(
+        self,
+        composite_id,
+        time_range="1d",
+        max_events=10,
+        deadline=float("inf"),
+        queries_executed=None,
+    ):
+        """Get events related to an NGSIEM alert using CQL queries.
+
+        Runs 3 indicator queries in parallel. Takes the first match. Falls back to
+        failure dict if all queries fail or the deadline expires.
+        """
+        if not _NGSIEM_AVAILABLE:
             return {"success": False, "error": "NGSIEM enrichment not available"}
+
+        # Cache check — avoid re-querying the same alert in a session
+        cache_key = (composite_id, time_range)
+        if cache_key in self._ngsiem_event_cache:
+            return self._ngsiem_event_cache[cache_key]
 
         try:
             parts = composite_id.split(":")
@@ -453,18 +468,34 @@ class AlertsModule(BaseModule):
                 f'indicator.id = "{indicator_id}"',
             ]
 
-            detection_id_from_event = None
+            # Phase 1: Run all 3 indicator queries in parallel
+            remaining = max(0.0, deadline - _time.time())
             indicator_event = None
+            detection_id_from_event = None
 
-            for query in indicator_queries:
-                result = self._execute_ngsiem_query(ngsiem, query, time_range, 1)
-                if result.get("success") and result.get("events_matched", 0) > 0:
-                    events = result.get("events", [])
-                    if events:
-                        indicator_event = events[0]
-                        detection_id_from_event = indicator_event.get("Ngsiem.detection.id") or indicator_event.get("detection.id")
-                        self._log(f"Found indicator event, detection ID: {detection_id_from_event}")
-                        break
+            executor = ThreadPoolExecutor(max_workers=3)
+            futures = {
+                executor.submit(
+                    self._execute_ngsiem_query, q, time_range, 1, deadline, queries_executed
+                ): q
+                for q in indicator_queries
+            }
+            try:
+                for future in as_completed(futures, timeout=remaining):
+                    result = future.result()
+                    if result.get("success") and result.get("events_matched", 0) > 0:
+                        events = result.get("events", [])
+                        if events:
+                            indicator_event = events[0]
+                            detection_id_from_event = (
+                                indicator_event.get("Ngsiem.detection.id")
+                                or indicator_event.get("detection.id")
+                            )
+                            break
+            except FuturesTimeoutError:
+                pass
+            finally:
+                executor.shutdown(wait=False)  # threads self-abort via deadline check
 
             if not detection_id_from_event:
                 return {
@@ -473,30 +504,37 @@ class AlertsModule(BaseModule):
                     "events_matched": 0,
                 }
 
+            # Phase 2: Detection queries (sequential, within same deadline)
             detection_queries = [
                 f'Ngsiem.detection.id = "{detection_id_from_event}"',
                 f'detection.id = "{detection_id_from_event}"',
             ]
 
             for query in detection_queries:
-                result = self._execute_ngsiem_query(ngsiem, query, time_range, max_events)
+                result = self._execute_ngsiem_query(
+                    query, time_range, max_events, deadline, queries_executed
+                )
                 if result.get("success") and result.get("events_matched", 0) > 0:
-                    return {
+                    success_result = {
                         "success": True,
                         "events": result.get("events", []),
                         "events_matched": result.get("events_matched", 0),
                         "detection_id_used": detection_id_from_event,
                         "query_used": query,
                     }
+                    self._ngsiem_event_cache[cache_key] = success_result
+                    return success_result
 
             if indicator_event:
-                return {
+                success_result = {
                     "success": True,
                     "events": [indicator_event],
                     "events_matched": 1,
                     "detection_id_used": detection_id_from_event,
                     "note": "Only found the indicator event, no additional related events",
                 }
+                self._ngsiem_event_cache[cache_key] = success_result
+                return success_result
 
             return {
                 "success": False,

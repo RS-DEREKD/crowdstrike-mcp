@@ -108,3 +108,94 @@ class TestNgsiemEventCache:
             m2 = AlertsModule(mock_client)
             m1._ngsiem_event_cache[("key", "1d")] = {"success": True}
             assert ("key", "1d") not in m2._ngsiem_event_cache
+
+
+class TestParallelIndicatorQueries:
+    """All 3 indicator queries fire in parallel; first match wins."""
+
+    def test_all_three_indicator_queries_submitted(self, alerts_module):
+        """ThreadPoolExecutor receives all 3 indicator query strings."""
+        submitted_queries = []
+
+        def fake_execute(query, *args, **kwargs):
+            submitted_queries.append(query)
+            return {"success": False, "events_matched": 0}
+
+        alerts_module._execute_ngsiem_query = fake_execute
+
+        alerts_module._get_related_ngsiem_events(
+            "cust:ngsiem:cust:indicator-uuid",
+            time_range="1d",
+            max_events=5,
+            deadline=_time.time() + 30,
+            queries_executed=[],
+        )
+        # All 3 indicator query strings should have been submitted
+        assert len(submitted_queries) >= 3
+
+    def test_cache_hit_skips_queries(self, alerts_module):
+        """Second call with same (detection_id, time_range) returns cached result."""
+        cached = {"success": True, "events": [{"field": "value"}], "events_matched": 1, "query_used": "q"}
+        cache_key = ("cust:ngsiem:cust:indicator-uuid", "1d")
+        alerts_module._ngsiem_event_cache[cache_key] = cached
+
+        execute_called = []
+        alerts_module._execute_ngsiem_query = lambda *a, **kw: execute_called.append(1) or {"success": False}
+
+        result = alerts_module._get_related_ngsiem_events(
+            "cust:ngsiem:cust:indicator-uuid", time_range="1d", max_events=5
+        )
+        assert result == cached
+        assert len(execute_called) == 0  # no queries fired
+
+    def test_successful_result_stored_in_cache(self, alerts_module):
+        """A successful result is stored in the cache for future calls."""
+        indicator_event = {"Ngsiem.detection.id": "det-123", "@timestamp": "2026-04-15T10:00:00Z"}
+
+        call_count = [0]
+
+        def fake_execute(query, *args, **kwargs):
+            call_count[0] += 1
+            if "indicator.id" in query or "Ngsiem.indicator" in query or "@id" in query:
+                return {"success": True, "events_matched": 1, "events": [indicator_event]}
+            if "det-123" in query:
+                return {"success": True, "events_matched": 1, "events": [indicator_event]}
+            return {"success": False, "events_matched": 0}
+
+        alerts_module._execute_ngsiem_query = fake_execute
+
+        result = alerts_module._get_related_ngsiem_events(
+            "cust:ngsiem:cust:indicator-uuid", time_range="1d", max_events=5
+        )
+        assert result.get("success") is True
+        cache_key = ("cust:ngsiem:cust:indicator-uuid", "1d")
+        assert cache_key in alerts_module._ngsiem_event_cache
+
+    def test_failed_result_not_cached(self, alerts_module):
+        """A failed/timed-out result is not stored in cache."""
+        alerts_module._execute_ngsiem_query = lambda *a, **kw: {"success": False, "events_matched": 0}
+
+        alerts_module._get_related_ngsiem_events(
+            "cust:ngsiem:cust:no-match", time_range="1d", max_events=5
+        )
+        cache_key = ("cust:ngsiem:cust:no-match", "1d")
+        assert cache_key not in alerts_module._ngsiem_event_cache
+
+    def test_futures_timeout_returns_failure_not_exception(self, alerts_module):
+        """FuturesTimeoutError is caught — function returns a failure dict, no exception raised."""
+
+        def slow_execute(query, *args, **kwargs):
+            _time.sleep(0.05)
+            return {"success": False, "events_matched": 0}
+
+        alerts_module._execute_ngsiem_query = slow_execute
+
+        # Use an already-expired deadline so as_completed timeout fires immediately
+        result = alerts_module._get_related_ngsiem_events(
+            "cust:ngsiem:cust:indicator-uuid",
+            time_range="1d",
+            max_events=5,
+            deadline=_time.time() - 1,  # already expired
+        )
+        # Should return a failure dict, not raise
+        assert result.get("success") is False
