@@ -121,6 +121,17 @@ def format_text_response(
                     context_line = f"\nTool: {tool_name} | {key}: {val}"
                     break
 
+        triggering_pid = metadata.get("triggering_pid") if metadata else None
+        if triggering_pid:
+            last_lines = [
+                f'  get_stored_response(ref_id="{ref_id}", record_key="{triggering_pid}")  → triggering process',
+                f'  get_stored_response(ref_id="{ref_id}", record_index=0)                 → first event (chronological)',
+            ]
+        else:
+            last_lines = [
+                f'  get_stored_response(ref_id="{ref_id}", record_index=0)                → full first record',
+            ]
+
         parts = [
             summary,
             "",
@@ -131,7 +142,7 @@ def format_text_response(
             f'  get_stored_response(ref_id="{ref_id}")                                → metadata overview',
             f'  get_stored_response(ref_id="{ref_id}", fields="source.ip,user.name")  → extract fields',
             f'  get_stored_response(ref_id="{ref_id}", search="keyword")              → search records',
-            f'  get_stored_response(ref_id="{ref_id}", record_index=0)                → full first record',
+            *last_lines,
         ]
 
         result = "\n".join(parts)
@@ -283,7 +294,7 @@ def extract_detection_id(raw_input: str) -> str:
 
 
 def parse_composite_id(composite_id: str) -> Dict[str, str]:
-    """Parse a CrowdStrike composite detection ID to extract product type.
+    """Parse a CrowdStrike composite detection ID to extract product type and trigger info.
 
     Composite ID formats:
       - Endpoint:       cust_id:ind:sub_id:detect_id
@@ -292,16 +303,52 @@ def parse_composite_id(composite_id: str) -> Dict[str, str]:
       - Identity:       cust_id:ldt:sub_id:detect_id
       - Third-Party:    cust_id:thirdparty:cust_id:alert_id
 
-    Returns dict with keys: product_prefix, product_type, product_name, parts
+    Returns dict with keys: product_prefix, product_type, product_name, parts,
+                            target_process_id, trigger_format
     """
     parts = composite_id.split(":")
 
     if len(parts) < 3:
-        return {"product_prefix": "unknown", "product_type": "unknown", "product_name": "Unknown", "parts": parts}
+        return {
+            "product_prefix": "unknown",
+            "product_type": "unknown",
+            "product_name": "Unknown",
+            "parts": parts,
+            "target_process_id": None,
+            "trigger_format": "unknown: unrecognized product type",
+        }
 
     prefix = parts[1]
     # Handle fcs sub-types like "fcs" from "cust_id:fcs:ioa-212:uuid"
     product_type = PRODUCT_PREFIX_MAP.get(prefix, "unknown")
     product_name = PRODUCT_DISPLAY_NAMES.get(product_type, "Unknown")
 
-    return {"product_prefix": prefix, "product_type": product_type, "product_name": product_name, "parts": parts}
+    # Extract triggering process ID for endpoint (ind:) alerts.
+    # Suffix format: <TargetProcessId>-<offset>-<trigger_id>
+    target_process_id = None
+    if product_type == "endpoint" and len(parts) >= 4:
+        suffix = parts[-1]
+        if suffix.count("-") >= 2:
+            target_process_id = suffix.split("-")[0]
+            trigger_format = "ind:suffix=<pid>-<offset>-<trigger_id>"
+        else:
+            trigger_format = "ind: suffix malformed — expected <pid>-<offset>-<trigger_id>"
+    elif product_type == "ngsiem":
+        trigger_format = "ngsiem: format unknown — investigate old alerts for pattern"
+    elif product_type == "thirdparty":
+        trigger_format = "thirdparty: no single triggering event concept"
+    elif product_type == "cloud_security":
+        trigger_format = "fcs: format unknown — investigate old alerts for pattern"
+    elif product_type == "identity":
+        trigger_format = "ldt: format unknown — investigate old alerts for pattern"
+    else:
+        trigger_format = "unknown: unrecognized product type"
+
+    return {
+        "product_prefix": prefix,
+        "product_type": product_type,
+        "product_name": product_name,
+        "parts": parts,
+        "target_process_id": target_process_id,
+        "trigger_format": trigger_format,
+    }

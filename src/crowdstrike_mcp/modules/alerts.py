@@ -202,7 +202,10 @@ class AlertsModule(BaseModule):
             tool_name="alert_analysis",
             raw=True,
             structured_data=result,
-            metadata={"detection_id": detection_id},
+            metadata={
+                "detection_id": detection_id,
+                "triggering_pid": result.get("triggering_pid"),
+            },
         )
 
     async def update_alert_status(
@@ -610,6 +613,9 @@ class AlertsModule(BaseModule):
             "events": None,
             "behaviors": None,
             "enrichment_note": None,
+            "triggering_pid": None,  # populated for endpoint alerts only
+            "triggering_record_index": None,
+            "triggering_process": None,
         }
 
         if product_type == "ngsiem" and _NGSIEM_AVAILABLE:
@@ -634,10 +640,29 @@ class AlertsModule(BaseModule):
 
         elif product_type == "endpoint":
             result["enrichment_type"] = "endpoint_behaviors"
+            result["triggering_pid"] = id_info.get("target_process_id")
+            result["triggering_record_index"] = None
+            result["triggering_process"] = None
             try:
                 behaviors_result = self._get_behaviors_for_alert(alert)
                 if behaviors_result.get("success"):
-                    result["behaviors"] = behaviors_result.get("behaviors", [])
+                    behaviors = behaviors_result.get("behaviors", [])
+                    # Sort by @timestamp ascending (chronological); None-safe key
+                    behaviors.sort(key=lambda e: e.get("@timestamp") or "")
+                    result["behaviors"] = behaviors
+                    # Find the triggering record by TargetProcessId
+                    target_pid = id_info.get("target_process_id")
+                    if target_pid:
+                        for idx, record in enumerate(behaviors):
+                            if str(record.get("TargetProcessId", "")) == target_pid:
+                                result["triggering_record_index"] = idx
+                                result["triggering_process"] = {
+                                    "ImageFileName": record.get("ImageFileName"),
+                                    "CommandLine": record.get("CommandLine"),
+                                    "TargetProcessId": record.get("TargetProcessId"),
+                                    "record_index": idx,
+                                }
+                                break
                 else:
                     result["enrichment_note"] = f"Endpoint behavior retrieval failed: {behaviors_result.get('error', 'Unknown')}"
             except Exception as e:
@@ -708,6 +733,17 @@ class AlertsModule(BaseModule):
         if assigned:
             parts.append(f"- **Assigned To**: {assigned}")
         parts.append("")
+
+        # Triggering Process block — endpoint alerts only
+        triggering_process = analysis.get("triggering_process")
+        if triggering_process:
+            total = len(analysis.get("behaviors") or [])
+            parts.append("### Triggering Process")
+            parts.append(f"- **Image**: {triggering_process.get('ImageFileName', 'N/A')}")
+            parts.append(f"- **Command**: {triggering_process.get('CommandLine', 'N/A')}")
+            parts.append(f"- **PID**: {triggering_process.get('TargetProcessId', 'N/A')}")
+            parts.append(f"- **Record index**: {triggering_process.get('record_index', 'N/A')} (of {total} total, sorted by timestamp)")
+            parts.append("")
 
         behaviors = alert.get("behaviors", [])
         if behaviors and isinstance(behaviors, list):
@@ -811,6 +847,17 @@ class AlertsModule(BaseModule):
                     parts.append(f"- **MITRE**: {b.get('tactic', 'N/A')} / {b.get('technique', 'N/A')}")
 
         parts.append(f"- **Product**: {analysis['product_name']}")
+
+        # Triggering Process block — endpoint alerts only
+        triggering_process = analysis.get("triggering_process")
+        if triggering_process:
+            total = len(analysis.get("behaviors") or [])
+            parts.append("### Triggering Process")
+            parts.append(f"- **Image**: {triggering_process.get('ImageFileName', 'N/A')}")
+            parts.append(f"- **Command**: {triggering_process.get('CommandLine', 'N/A')}")
+            parts.append(f"- **PID**: {triggering_process.get('TargetProcessId', 'N/A')}")
+            parts.append(f"- **Record index**: {triggering_process.get('record_index', 'N/A')} (of {total} total, sorted by timestamp)")
+            parts.append("")
 
         events = analysis.get("events") or []
         total_events = analysis.get("events_matched", len(events))
