@@ -24,6 +24,7 @@ _KEY_FIELDS = [
     "@id",
     "detection_id",
     "id",
+    "TargetProcessId",  # endpoint behavior records (ProcessRollup2)
     "user.name",
     "UserName",
     "user_name",
