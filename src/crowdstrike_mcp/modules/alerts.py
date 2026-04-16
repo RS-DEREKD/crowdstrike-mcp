@@ -610,6 +610,9 @@ class AlertsModule(BaseModule):
             "events": None,
             "behaviors": None,
             "enrichment_note": None,
+            "triggering_pid": None,  # populated for endpoint alerts only
+            "triggering_record_index": None,
+            "triggering_process": None,
         }
 
         if product_type == "ngsiem" and _NGSIEM_AVAILABLE:
@@ -634,10 +637,29 @@ class AlertsModule(BaseModule):
 
         elif product_type == "endpoint":
             result["enrichment_type"] = "endpoint_behaviors"
+            result["triggering_pid"] = id_info.get("target_process_id")
+            result["triggering_record_index"] = None
+            result["triggering_process"] = None
             try:
                 behaviors_result = self._get_behaviors_for_alert(alert)
                 if behaviors_result.get("success"):
-                    result["behaviors"] = behaviors_result.get("behaviors", [])
+                    behaviors = behaviors_result.get("behaviors", [])
+                    # Sort by @timestamp ascending (chronological); None-safe key
+                    behaviors.sort(key=lambda e: e.get("@timestamp") or "")
+                    result["behaviors"] = behaviors
+                    # Find the triggering record by TargetProcessId
+                    target_pid = id_info.get("target_process_id")
+                    if target_pid:
+                        for idx, record in enumerate(behaviors):
+                            if str(record.get("TargetProcessId", "")) == target_pid:
+                                result["triggering_record_index"] = idx
+                                result["triggering_process"] = {
+                                    "ImageFileName": record.get("ImageFileName"),
+                                    "CommandLine": record.get("CommandLine"),
+                                    "TargetProcessId": record.get("TargetProcessId"),
+                                    "record_index": idx,
+                                }
+                                break
                 else:
                     result["enrichment_note"] = f"Endpoint behavior retrieval failed: {behaviors_result.get('error', 'Unknown')}"
             except Exception as e:
