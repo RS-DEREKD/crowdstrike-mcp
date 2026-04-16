@@ -677,17 +677,27 @@ class AlertsModule(BaseModule):
 
         if product_type == "ngsiem" and _NGSIEM_AVAILABLE:
             result["enrichment_type"] = "ngsiem_events"
+            deadline = _time.time() + 45
+            queries_executed: list[str] = []
             events_result = self._get_related_ngsiem_events(
                 detection_id,
                 time_range="7d",
                 max_events=max_events,
+                deadline=deadline,
+                queries_executed=queries_executed,
             )
-            if events_result.get("success"):
+            result["ngsiem_queries_executed"] = queries_executed
+            if not events_result.get("success"):
+                result["enrichment_note"] = (
+                    "NGSIEM enrichment timed out or failed. Raw alert metadata returned. "
+                    "Query directly via ngsiem_query with the indicator ID as a filter. "
+                    f"Queries attempted: {len(queries_executed)}"
+                )
+                result["events"] = None
+            else:
                 result["events"] = events_result.get("events", [])
                 result["events_matched"] = events_result.get("events_matched", 0)
                 result["query_used"] = events_result.get("query_used", "")
-            else:
-                result["enrichment_note"] = f"NGSIEM event retrieval failed: {events_result.get('error', 'Unknown')}"
 
         elif product_type == "cloud_security":
             result["enrichment_type"] = "cloud_security_raw"
