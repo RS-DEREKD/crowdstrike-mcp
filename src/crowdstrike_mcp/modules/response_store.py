@@ -69,7 +69,16 @@ class ResponseStoreModule(BaseModule):
             description=(
                 "Query stored structured data from a previous tool response. "
                 "Use ref_id from truncation notices to extract fields, search records, "
-                "or retrieve specific records without leaving the MCP tool loop."
+                "or retrieve specific records without leaving the MCP tool loop.\n\n"
+                "Field-path note: field paths differ between tools. "
+                "`ngsiem_query` stores events with flat dotted keys "
+                "(e.g., `source.ip`, `Vendor.userIdentity.arn`), while "
+                "`alert_analysis` stores events as nested dicts under "
+                "`Ngsiem.event.*` (e.g., `Ngsiem.event.source_ips`, "
+                "`Ngsiem.event.usernames`). When unsure, call with "
+                "`record_index=0` first to discover the schema, or call with "
+                "just `ref_id` to see a metadata overview including the "
+                "available top-level keys."
             ),
         )
         self._add_tool(
