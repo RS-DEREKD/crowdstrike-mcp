@@ -16,6 +16,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time as _time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Annotated, Optional
 
@@ -48,6 +51,7 @@ class AlertsModule(BaseModule):
 
     def __init__(self, client):
         super().__init__(client)
+        self._ngsiem_event_cache: dict[tuple[str, str], dict] = {}
         self._log("Initialized")
 
     def register_resources(self, server: FastMCP) -> None:
@@ -437,11 +441,26 @@ class AlertsModule(BaseModule):
             self._log(f"NGSIEM enrichment not available: {e}")
             return None
 
-    def _get_related_ngsiem_events(self, composite_id, time_range="1d", max_events=10):
-        """Get events related to an NGSIEM alert using CQL queries."""
-        ngsiem = self._get_ngsiem_service()
-        if not ngsiem:
+    def _get_related_ngsiem_events(
+        self,
+        composite_id,
+        time_range="1d",
+        max_events=10,
+        deadline=float("inf"),
+        queries_executed=None,
+    ):
+        """Get events related to an NGSIEM alert using CQL queries.
+
+        Runs 3 indicator queries in parallel. Takes the first match. Falls back to
+        failure dict if all queries fail or the deadline expires.
+        """
+        if not _NGSIEM_AVAILABLE:
             return {"success": False, "error": "NGSIEM enrichment not available"}
+
+        # Cache check — avoid re-querying the same alert in a session
+        cache_key = (composite_id, time_range)
+        if cache_key in self._ngsiem_event_cache:
+            return self._ngsiem_event_cache[cache_key]
 
         try:
             parts = composite_id.split(":")
@@ -453,18 +472,26 @@ class AlertsModule(BaseModule):
                 f'indicator.id = "{indicator_id}"',
             ]
 
-            detection_id_from_event = None
+            # Phase 1: Run all 3 indicator queries in parallel
+            remaining = max(0.0, deadline - _time.time())
             indicator_event = None
+            detection_id_from_event = None
 
-            for query in indicator_queries:
-                result = self._execute_ngsiem_query(ngsiem, query, time_range, 1)
-                if result.get("success") and result.get("events_matched", 0) > 0:
-                    events = result.get("events", [])
-                    if events:
-                        indicator_event = events[0]
-                        detection_id_from_event = indicator_event.get("Ngsiem.detection.id") or indicator_event.get("detection.id")
-                        self._log(f"Found indicator event, detection ID: {detection_id_from_event}")
-                        break
+            executor = ThreadPoolExecutor(max_workers=3)
+            futures = {executor.submit(self._execute_ngsiem_query, q, time_range, 1, deadline, queries_executed): q for q in indicator_queries}
+            try:
+                for future in as_completed(futures, timeout=remaining):
+                    result = future.result()
+                    if result.get("success") and result.get("events_matched", 0) > 0:
+                        events = result.get("events", [])
+                        if events:
+                            indicator_event = events[0]
+                            detection_id_from_event = indicator_event.get("Ngsiem.detection.id") or indicator_event.get("detection.id")
+                            break
+            except FuturesTimeoutError:
+                pass
+            finally:
+                executor.shutdown(wait=False)  # threads self-abort via deadline check
 
             if not detection_id_from_event:
                 return {
@@ -473,30 +500,35 @@ class AlertsModule(BaseModule):
                     "events_matched": 0,
                 }
 
+            # Phase 2: Detection queries (sequential, within same deadline)
             detection_queries = [
                 f'Ngsiem.detection.id = "{detection_id_from_event}"',
                 f'detection.id = "{detection_id_from_event}"',
             ]
 
             for query in detection_queries:
-                result = self._execute_ngsiem_query(ngsiem, query, time_range, max_events)
+                result = self._execute_ngsiem_query(query, time_range, max_events, deadline, queries_executed)
                 if result.get("success") and result.get("events_matched", 0) > 0:
-                    return {
+                    success_result = {
                         "success": True,
                         "events": result.get("events", []),
                         "events_matched": result.get("events_matched", 0),
                         "detection_id_used": detection_id_from_event,
                         "query_used": query,
                     }
+                    self._ngsiem_event_cache[cache_key] = success_result
+                    return success_result
 
             if indicator_event:
-                return {
+                success_result = {
                     "success": True,
                     "events": [indicator_event],
                     "events_matched": 1,
                     "detection_id_used": detection_id_from_event,
                     "note": "Only found the indicator event, no additional related events",
                 }
+                self._ngsiem_event_cache[cache_key] = success_result
+                return success_result
 
             return {
                 "success": False,
@@ -506,11 +538,28 @@ class AlertsModule(BaseModule):
         except Exception as e:
             return {"success": False, "error": f"Error getting related events: {str(e)}"}
 
-    def _execute_ngsiem_query(self, ngsiem, query, start_time="1d", max_results=10):
-        """Execute a CQL query using the provided NGSIEM service instance."""
-        import time as _time
+    def _execute_ngsiem_query(
+        self,
+        query,
+        start_time="1d",
+        max_results=10,
+        deadline=float("inf"),
+        queries_executed=None,
+    ):
+        """Execute a CQL query using the NGSIEM service.
+
+        Supports a caller-supplied ``deadline`` (epoch seconds) that triggers an
+        early abort before the normal 60s timeout. When provided, ``queries_executed``
+        receives the timestamped CQL string for debug inspection.
+        """
+        ngsiem = self._get_ngsiem_service()
+        if not ngsiem:
+            return {"success": False, "error": "NGSIEM enrichment not available"}
 
         timestamped_query = f"// MCP Query - {datetime.now().isoformat()}\n{query}"
+
+        if queries_executed is not None:
+            queries_executed.append(timestamped_query)
 
         try:
             response = ngsiem.start_search(
@@ -529,6 +578,11 @@ class AlertsModule(BaseModule):
             timeout = 60
 
             while _time.time() - start < timeout:
+                # Check caller-supplied deadline first (fires before 60s for NGSIEM alerts)
+                if _time.time() >= deadline:
+                    ngsiem.stop_search(repository="search-all", id=search_id)
+                    return {"success": False, "timed_out": True, "error": "Deadline exceeded"}
+
                 status_response = ngsiem.get_search_status(
                     repository="search-all",
                     search_id=search_id,
@@ -581,7 +635,7 @@ class AlertsModule(BaseModule):
         query = f'#event_simpleName=ProcessRollup2 aid="{device_id}" | head(20)'
 
         try:
-            result = self._execute_ngsiem_query(ngsiem, query, start_time="24h", max_results=20)
+            result = self._execute_ngsiem_query(query, start_time="24h", max_results=20)
             if not result.get("success"):
                 return {
                     "success": False,
@@ -620,17 +674,27 @@ class AlertsModule(BaseModule):
 
         if product_type == "ngsiem" and _NGSIEM_AVAILABLE:
             result["enrichment_type"] = "ngsiem_events"
+            deadline = _time.time() + 45
+            queries_executed: list[str] = []
             events_result = self._get_related_ngsiem_events(
                 detection_id,
                 time_range="7d",
                 max_events=max_events,
+                deadline=deadline,
+                queries_executed=queries_executed,
             )
-            if events_result.get("success"):
+            result["ngsiem_queries_executed"] = queries_executed
+            if not events_result.get("success"):
+                result["enrichment_note"] = (
+                    "NGSIEM enrichment timed out or failed. Raw alert metadata returned. "
+                    "Query directly via ngsiem_query with the indicator ID as a filter. "
+                    f"Queries attempted: {len(queries_executed)}"
+                )
+                result["events"] = None
+            else:
                 result["events"] = events_result.get("events", [])
                 result["events_matched"] = events_result.get("events_matched", 0)
                 result["query_used"] = events_result.get("query_used", "")
-            else:
-                result["enrichment_note"] = f"NGSIEM event retrieval failed: {events_result.get('error', 'Unknown')}"
 
         elif product_type == "cloud_security":
             result["enrichment_type"] = "cloud_security_raw"
