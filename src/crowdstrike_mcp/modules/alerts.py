@@ -731,6 +731,19 @@ class AlertsModule(BaseModule):
             parts.append(f"- **Assigned To**: {assigned}")
         parts.append("")
 
+        # Triggering Process block — endpoint alerts only
+        triggering_process = analysis.get("triggering_process")
+        if triggering_process:
+            total = len(analysis.get("behaviors") or [])
+            parts.append("### Triggering Process")
+            parts.append(f"- **Image**: {triggering_process.get('ImageFileName', 'N/A')}")
+            parts.append(f"- **Command**: {triggering_process.get('CommandLine', 'N/A')}")
+            parts.append(f"- **PID**: {triggering_process.get('TargetProcessId', 'N/A')}")
+            parts.append(
+                f"- **Record index**: {triggering_process.get('record_index', 'N/A')} (of {total} total, sorted by timestamp)"
+            )
+            parts.append("")
+
         behaviors = alert.get("behaviors", [])
         if behaviors and isinstance(behaviors, list):
             parts.append("### MITRE ATT&CK Mapping")
@@ -833,6 +846,19 @@ class AlertsModule(BaseModule):
                     parts.append(f"- **MITRE**: {b.get('tactic', 'N/A')} / {b.get('technique', 'N/A')}")
 
         parts.append(f"- **Product**: {analysis['product_name']}")
+
+        # Triggering Process block — endpoint alerts only
+        triggering_process = analysis.get("triggering_process")
+        if triggering_process:
+            total = len(analysis.get("behaviors") or [])
+            parts.append("### Triggering Process")
+            parts.append(f"- **Image**: {triggering_process.get('ImageFileName', 'N/A')}")
+            parts.append(f"- **Command**: {triggering_process.get('CommandLine', 'N/A')}")
+            parts.append(f"- **PID**: {triggering_process.get('TargetProcessId', 'N/A')}")
+            parts.append(
+                f"- **Record index**: {triggering_process.get('record_index', 'N/A')} (of {total} total, sorted by timestamp)"
+            )
+            parts.append("")
 
         events = analysis.get("events") or []
         total_events = analysis.get("events_matched", len(events))

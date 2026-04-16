@@ -174,3 +174,84 @@ class TestTriggeringProcessPopulation:
         result = alerts_module._analyze_alert("cust:thirdparty:cust:alert-uuid", max_events=5)
         assert result.get("triggering_process") is None
         assert result.get("triggering_pid") is None
+
+
+class TestTriggeringProcessBlock:
+    """Triggering Process block appears in formatter output when triggering_process is set."""
+
+    def _make_analysis(self, triggering_process=None):
+        """Minimal analysis result dict for formatter testing."""
+        return {
+            "alert": {
+                "name": "GenericMasqueradingDefenseEvasion",
+                "composite_id": "cust:ind:sub:288700987-10357-1549328",
+                "severity_name": "High",
+                "severity": 70,
+                "status": "new",
+                "type": "ind",
+                "product": {},
+                "created_timestamp": "2026-04-15T10:00:00Z",
+                "updated_timestamp": "2026-04-15T10:00:00Z",
+            },
+            "product_type": "endpoint",
+            "product_name": "Endpoint",
+            "enrichment_type": "endpoint_behaviors",
+            "events": None,
+            "behaviors": [],
+            "enrichment_note": None,
+            "triggering_pid": "288700987" if triggering_process else None,
+            "triggering_record_index": 4 if triggering_process else None,
+            "triggering_process": triggering_process,
+        }
+
+    def test_full_formatter_includes_triggering_block(self, alerts_module):
+        tp = {
+            "ImageFileName": "\\Device\\SearchIndexer.exe",
+            "CommandLine": "SearchIndexer.exe /Embedding",
+            "TargetProcessId": "288700987",
+            "record_index": 4,
+        }
+        analysis = self._make_analysis(triggering_process=tp)
+        output = alerts_module._format_alert_analysis_response(analysis, summary_mode=False)
+        assert "### Triggering Process" in output
+        assert "SearchIndexer.exe" in output
+        assert "SearchIndexer.exe /Embedding" in output
+        assert "288700987" in output
+        assert "record_index" in output.lower() or "Record index" in output
+
+    def test_full_formatter_triggering_block_before_behaviors(self, alerts_module):
+        """Triggering block must appear before the behaviors section."""
+        tp = {
+            "ImageFileName": "\\Device\\SearchIndexer.exe",
+            "CommandLine": "SearchIndexer.exe /Embedding",
+            "TargetProcessId": "288700987",
+            "record_index": 4,
+        }
+        analysis = self._make_analysis(triggering_process=tp)
+        analysis["behaviors"] = [{"tactic": "Defense Evasion"}]
+        output = alerts_module._format_alert_analysis_response(analysis, summary_mode=False)
+        trigger_pos = output.index("### Triggering Process")
+        behaviors_pos = output.index("### Endpoint Behaviors")
+        assert trigger_pos < behaviors_pos
+
+    def test_full_formatter_no_block_when_triggering_process_none(self, alerts_module):
+        analysis = self._make_analysis(triggering_process=None)
+        output = alerts_module._format_alert_analysis_response(analysis, summary_mode=False)
+        assert "### Triggering Process" not in output
+
+    def test_summary_formatter_includes_triggering_block(self, alerts_module):
+        tp = {
+            "ImageFileName": "\\Device\\SearchIndexer.exe",
+            "CommandLine": "SearchIndexer.exe /Embedding",
+            "TargetProcessId": "288700987",
+            "record_index": 4,
+        }
+        analysis = self._make_analysis(triggering_process=tp)
+        output = alerts_module._format_alert_analysis_response(analysis, summary_mode=True)
+        assert "### Triggering Process" in output
+        assert "SearchIndexer.exe" in output
+
+    def test_summary_formatter_no_block_when_triggering_process_none(self, alerts_module):
+        analysis = self._make_analysis(triggering_process=None)
+        output = alerts_module._format_alert_analysis_response(analysis, summary_mode=True)
+        assert "### Triggering Process" not in output
