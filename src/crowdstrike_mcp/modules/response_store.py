@@ -34,7 +34,23 @@ _KEY_FIELDS = [
 
 
 def _get_nested(d: dict, dot_path: str):
-    """Navigate a nested dict by dot-separated path. Returns None on miss."""
+    """Resolve a dotted field path against a record.
+
+    Supports both flat dotted keys (as produced by ``ngsiem_query``) and
+    nested dicts (as produced by ``alert_analysis``):
+
+      * First tries a literal key lookup (``d["source.ip"]``) — this handles
+        CQL-style flat records where the dot is part of the key name.
+      * Falls back to splitting on ``.`` and walking the nested dict.
+
+    Returns ``None`` on miss.
+    """
+    if not isinstance(d, dict):
+        return None
+    # Literal-key lookup first: handles flat dotted keys like "source.ip".
+    if dot_path in d:
+        return d[dot_path]
+    # Otherwise walk the nested dict.
     keys = dot_path.split(".")
     current = d
     for key in keys:
@@ -69,7 +85,16 @@ class ResponseStoreModule(BaseModule):
             description=(
                 "Query stored structured data from a previous tool response. "
                 "Use ref_id from truncation notices to extract fields, search records, "
-                "or retrieve specific records without leaving the MCP tool loop."
+                "or retrieve specific records without leaving the MCP tool loop.\n\n"
+                "Field-path note: field paths differ between tools. "
+                "`ngsiem_query` stores events with flat dotted keys "
+                "(e.g., `source.ip`, `Vendor.userIdentity.arn`), while "
+                "`alert_analysis` stores events as nested dicts under "
+                "`Ngsiem.event.*` (e.g., `Ngsiem.event.source_ips`, "
+                "`Ngsiem.event.usernames`). When unsure, call with "
+                "`record_index=0` first to discover the schema, or call with "
+                "just `ref_id` to see a metadata overview including the "
+                "available top-level keys."
             ),
         )
         self._add_tool(
@@ -165,6 +190,23 @@ class ResponseStoreModule(BaseModule):
         if fields:
             flat = [r for lst in records.values() for r in lst][:max_results]
             projected = [self._project_fields(r, fields) for r in flat]
+            if projected and self._all_projections_null(projected):
+                # Surface a discoverable warning instead of silently returning
+                # a list of all-null dicts. Helps callers recover when field
+                # paths don't match the underlying record shape (e.g., CQL
+                # field names on alert_analysis-stored data).
+                all_flat = [r for lst in records.values() for r in lst]
+                top_keys = self._top_level_keys(all_flat)
+                warning_lines = [
+                    "Warning: all requested fields returned null for every record.",
+                    f"Requested fields: {fields}",
+                    f"Available top-level keys: [{', '.join(top_keys) if top_keys else '(none)'}]",
+                    "Tip: call get_stored_response(ref_id=..., record_index=0) to inspect the actual schema.",
+                    "",
+                    "Projected data (all nulls):",
+                    json.dumps(projected, indent=2, default=str),
+                ]
+                return format_text_response("\n".join(warning_lines), raw=True)
             return format_text_response(
                 json.dumps(projected, indent=2, default=str),
                 raw=True,
@@ -197,7 +239,50 @@ class ResponseStoreModule(BaseModule):
         return {k: v for k, v in data.items() if isinstance(v, list)}
 
     @staticmethod
-    def _format_metadata(stored) -> str:
+    def _top_level_keys(records: list[dict]) -> list[str]:
+        """Union of top-level keys across all dict records, preserving first-seen order."""
+        seen: dict[str, None] = {}
+        for r in records:
+            if isinstance(r, dict):
+                for k in r.keys():
+                    seen.setdefault(k, None)
+        return list(seen.keys())
+
+    @classmethod
+    def _schema_hint(cls, records: list[dict]) -> list[str]:
+        """Build a schema hint listing top-level keys and one level of nested subkeys.
+
+        For each top-level key seen across records:
+          * If its value is a dict in any record, list the subkeys as
+            ``parent.child`` entries.
+          * Otherwise, list just the top-level key name.
+
+        Intended to help callers discover the actual field paths in stored data
+        without needing to fetch a full record first.
+        """
+        top_keys = cls._top_level_keys(records)
+        if not top_keys:
+            return []
+        # Collect nested subkeys: {parent_key: ordered-list of subkeys}
+        nested: dict[str, dict[str, None]] = {k: {} for k in top_keys}
+        for r in records:
+            if not isinstance(r, dict):
+                continue
+            for k, v in r.items():
+                if isinstance(v, dict):
+                    for sk in v.keys():
+                        nested[k].setdefault(sk, None)
+        entries: list[str] = []
+        for k in top_keys:
+            subs = list(nested.get(k, {}).keys())
+            if subs:
+                entries.extend(f"{k}.{sk}" for sk in subs)
+            else:
+                entries.append(k)
+        return entries
+
+    @classmethod
+    def _format_metadata(cls, stored) -> str:
         """Format metadata overview for a stored response."""
         lines = [
             f"Stored Response: {stored.ref_id}",
@@ -209,6 +294,22 @@ class ResponseStoreModule(BaseModule):
             for k, v in stored.metadata.items():
                 if v:
                     lines.append(f"{k}: {v}")
+
+        # Schema hint: surface discoverable field paths so callers don't have
+        # to pull a full record just to learn what fields exist.
+        record_lists = cls._find_record_lists(stored.data)
+        flat_records = [r for lst in record_lists.values() for r in lst]
+        schema_entries = cls._schema_hint(flat_records)
+        if schema_entries:
+            top_keys = cls._top_level_keys(flat_records)
+            lines.extend(
+                [
+                    "",
+                    f"Top-level keys: {', '.join(top_keys)}",
+                    f"Available fields: {', '.join(schema_entries)}",
+                ]
+            )
+
         lines.extend(
             [
                 "",
@@ -228,6 +329,25 @@ class ResponseStoreModule(BaseModule):
         for f in field_list:
             result[f] = _get_nested(record, f)
         return result
+
+    @staticmethod
+    def _all_projections_null(projections: list[dict]) -> bool:
+        """Return True iff every value across every projected record is None.
+
+        Used to decide whether to surface the all-null warning: if a field
+        extraction yields only None values, the caller almost certainly used
+        wrong field paths (the common case is CQL-style flat keys against
+        alert_analysis-stored nested data).
+        """
+        if not projections:
+            return False
+        for proj in projections:
+            if not isinstance(proj, dict):
+                return False
+            for v in proj.values():
+                if v is not None:
+                    return False
+        return True
 
     @staticmethod
     def _find_by_key(records: list[dict], key_value: str) -> dict | None:
