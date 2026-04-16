@@ -121,6 +121,17 @@ def format_text_response(
                     context_line = f"\nTool: {tool_name} | {key}: {val}"
                     break
 
+        triggering_pid = metadata.get("triggering_pid") if metadata else None
+        if triggering_pid:
+            last_lines = [
+                f'  get_stored_response(ref_id="{ref_id}", record_key="{triggering_pid}")  → triggering process',
+                f'  get_stored_response(ref_id="{ref_id}", record_index=0)                 → first event (chronological)',
+            ]
+        else:
+            last_lines = [
+                f'  get_stored_response(ref_id="{ref_id}", record_index=0)                → full first record',
+            ]
+
         parts = [
             summary,
             "",
@@ -131,7 +142,7 @@ def format_text_response(
             f'  get_stored_response(ref_id="{ref_id}")                                → metadata overview',
             f'  get_stored_response(ref_id="{ref_id}", fields="source.ip,user.name")  → extract fields',
             f'  get_stored_response(ref_id="{ref_id}", search="keyword")              → search records',
-            f'  get_stored_response(ref_id="{ref_id}", record_index=0)                → full first record',
+            *last_lines,
         ]
 
         result = "\n".join(parts)
