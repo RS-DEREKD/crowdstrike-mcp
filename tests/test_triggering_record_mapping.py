@@ -255,3 +255,77 @@ class TestTriggeringProcessBlock:
         analysis = self._make_analysis(triggering_process=None)
         output = alerts_module._format_alert_analysis_response(analysis, summary_mode=True)
         assert "### Triggering Process" not in output
+
+
+class TestAlertAnalysisMetadataWiring:
+    """alert_analysis() threads triggering_pid through metadata to format_text_response."""
+
+    def test_triggering_pid_passed_to_format_text_response(self, alerts_module):
+        """The metadata dict passed to format_text_response includes triggering_pid."""
+        import asyncio
+
+        captured = {}
+
+        def capture_format(text, **kwargs):
+            captured.update(kwargs)
+            return "formatted"
+
+        alerts_module._analyze_alert = MagicMock(
+            return_value={
+                "success": True,
+                "alert": {"composite_id": "cust:ind:sub:288700987-10357-1549328"},
+                "product_type": "endpoint",
+                "product_name": "Endpoint",
+                "enrichment_type": "endpoint_behaviors",
+                "events": None,
+                "behaviors": [],
+                "enrichment_note": None,
+                "triggering_pid": "288700987",
+                "triggering_record_index": 0,
+                "triggering_process": None,
+            }
+        )
+        alerts_module._format_alert_analysis_response = MagicMock(return_value="body")
+
+        with patch("crowdstrike_mcp.modules.alerts.format_text_response", side_effect=capture_format):
+            asyncio.run(
+                alerts_module.alert_analysis("cust:ind:sub:288700987-10357-1549328", max_events=5)
+            )
+
+        assert "metadata" in captured
+        assert captured["metadata"].get("triggering_pid") == "288700987"
+        assert captured["metadata"].get("detection_id") == "cust:ind:sub:288700987-10357-1549328"
+
+    def test_triggering_pid_none_for_non_endpoint_alerts(self, alerts_module):
+        """Non-endpoint alerts produce triggering_pid=None in metadata (no crash)."""
+        import asyncio
+
+        captured = {}
+
+        def capture_format(text, **kwargs):
+            captured.update(kwargs)
+            return "formatted"
+
+        alerts_module._analyze_alert = MagicMock(
+            return_value={
+                "success": True,
+                "alert": {"composite_id": "cust:ngsiem:cust:indicator-uuid"},
+                "product_type": "ngsiem",
+                "product_name": "NGSIEM",
+                "enrichment_type": "ngsiem_events",
+                "events": [],
+                "behaviors": None,
+                "enrichment_note": None,
+                "triggering_pid": None,
+                "triggering_record_index": None,
+                "triggering_process": None,
+            }
+        )
+        alerts_module._format_alert_analysis_response = MagicMock(return_value="body")
+
+        with patch("crowdstrike_mcp.modules.alerts.format_text_response", side_effect=capture_format):
+            asyncio.run(
+                alerts_module.alert_analysis("cust:ngsiem:cust:indicator-uuid", max_events=5)
+            )
+
+        assert captured["metadata"].get("triggering_pid") is None

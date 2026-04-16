@@ -202,7 +202,10 @@ class AlertsModule(BaseModule):
             tool_name="alert_analysis",
             raw=True,
             structured_data=result,
-            metadata={"detection_id": detection_id},
+            metadata={
+                "detection_id": detection_id,
+                "triggering_pid": result.get("triggering_pid"),
+            },
         )
 
     async def update_alert_status(
