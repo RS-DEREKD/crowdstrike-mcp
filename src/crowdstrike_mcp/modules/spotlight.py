@@ -86,6 +86,16 @@ class SpotlightModule(BaseModule):
                 "query/get split unless paginating very large result sets."
             ),
         )
+        self._add_tool(
+            server,
+            self.spotlight_get_remediations,
+            name="spotlight_get_remediations",
+            description=(
+                "Get remediation instructions (vendor patches, config changes) "
+                "by remediation ID. Pair with vulnerability records returned by "
+                "spotlight_vulnerabilities_combined."
+            ),
+        )
 
     async def spotlight_supported_evaluations(
         self,
@@ -197,6 +207,28 @@ class SpotlightModule(BaseModule):
             return format_text_response(f"Failed to query vulnerabilities: {result.get('error')}", raw=True)
         return self._format_vuln_list(result, header="Spotlight Vulnerabilities (combined)")
 
+    async def spotlight_get_remediations(
+        self,
+        ids: Annotated[list[str], "Remediation IDs (from a vulnerability record's remediation.ids list)"],
+    ) -> str:
+        """Fetch remediation instructions by ID."""
+        result = self._get_remediations(ids)
+        if not result.get("success"):
+            return format_text_response(f"Failed to get remediations: {result.get('error')}", raw=True)
+        resources = result["resources"]
+        lines = [f"Spotlight Remediations: {len(resources)} records", ""]
+        if not resources:
+            lines.append("No remediations returned.")
+        else:
+            for i, rem in enumerate(resources, 1):
+                lines.append(f"{i}. **{rem.get('title', 'Untitled')}** ({rem.get('id', 'N/A')})")
+                if rem.get("action"):
+                    lines.append(f"   Action: {rem['action']}")
+                if rem.get("reference"):
+                    lines.append(f"   Reference: {rem['reference']}")
+                lines.append("")
+        return format_text_response("\n".join(lines), raw=True)
+
     def _query_vulnerabilities(self, filter, limit=50, after=None, sort=None):
         if not SPOTLIGHT_VULNS_AVAILABLE:
             return {"success": False, "error": "SpotlightVulnerabilities client not available"}
@@ -306,3 +338,17 @@ class SpotlightModule(BaseModule):
             }
         except Exception as e:
             return {"success": False, "error": f"Error in combined query: {e}"}
+
+    def _get_remediations(self, ids):
+        if not SPOTLIGHT_VULNS_AVAILABLE:
+            return {"success": False, "error": "SpotlightVulnerabilities client not available"}
+        if not ids:
+            return {"success": False, "error": "ids list is required"}
+        try:
+            svc = self._service(SpotlightVulnerabilities)
+            r = svc.get_remediations_v2(ids=ids)
+            if r["status_code"] != 200:
+                return {"success": False, "error": format_api_error(r, "Failed to get remediations", operation="get_remediations_v2")}
+            return {"success": True, "resources": r.get("body", {}).get("resources", [])}
+        except Exception as e:
+            return {"success": False, "error": f"Error getting remediations: {e}"}

@@ -292,3 +292,41 @@ class TestSpotlightVulnerabilitiesCombined:
             spotlight_vuln_module.spotlight_vulnerabilities_combined(filter="status:'open'")
         )
         assert "failed" in result.lower()
+
+
+class TestSpotlightGetRemediations:
+    def test_returns_remediation_details(self, spotlight_vuln_module):
+        spotlight_vuln_module.falcon_vulns.get_remediations_v2.return_value = {
+            "status_code": 200,
+            "body": {"resources": [
+                {
+                    "id": "rem-1",
+                    "title": "Apply patch KB-001",
+                    "action": "Install vendor update",
+                    "reference": "https://example.com/patch",
+                }
+            ]},
+        }
+        result = asyncio.run(
+            spotlight_vuln_module.spotlight_get_remediations(ids=["rem-1"])
+        )
+        assert "Apply patch KB-001" in result
+        assert "rem-1" in result
+
+    def test_requires_ids(self, spotlight_vuln_module):
+        result = asyncio.run(spotlight_vuln_module.spotlight_get_remediations(ids=[]))
+        assert "ids" in result.lower() or "required" in result.lower()
+
+    def test_passes_ids(self, spotlight_vuln_module):
+        spotlight_vuln_module.falcon_vulns.get_remediations_v2.return_value = {
+            "status_code": 200, "body": {"resources": []},
+        }
+        asyncio.run(spotlight_vuln_module.spotlight_get_remediations(ids=["a", "b"]))
+        spotlight_vuln_module.falcon_vulns.get_remediations_v2.assert_called_once_with(ids=["a", "b"])
+
+    def test_handles_api_error(self, spotlight_vuln_module):
+        spotlight_vuln_module.falcon_vulns.get_remediations_v2.return_value = {
+            "status_code": 404, "body": {"errors": [{"message": "Not found"}]},
+        }
+        result = asyncio.run(spotlight_vuln_module.spotlight_get_remediations(ids=["x"]))
+        assert "failed" in result.lower()
