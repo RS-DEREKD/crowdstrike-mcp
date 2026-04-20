@@ -55,6 +55,17 @@ class SpotlightModule(BaseModule):
                 "can evaluate a specific CVE or what platforms are covered."
             ),
         )
+        self._add_tool(
+            server,
+            self.spotlight_query_vulnerabilities,
+            name="spotlight_query_vulnerabilities",
+            description=(
+                "Find vulnerability IDs matching an FQL filter. Use to locate open "
+                "CVEs by host (`aid`), CVE ID, severity, or age. Returns IDs only — "
+                "use spotlight_get_vulnerabilities or spotlight_vulnerabilities_combined "
+                "for full records."
+            ),
+        )
 
     async def spotlight_supported_evaluations(
         self,
@@ -95,3 +106,58 @@ class SpotlightModule(BaseModule):
             return format_text_response("\n".join(lines), raw=True)
         except Exception as e:
             return format_text_response(f"Failed to get supported evaluations: {e}", raw=True)
+
+    async def spotlight_query_vulnerabilities(
+        self,
+        filter: Annotated[str, "FQL filter expression (required). See falcon://fql/spotlight-vulnerabilities."],
+        limit: Annotated[int, "Max IDs to return (default 50, max 500)"] = 50,
+        after: Annotated[Optional[str], "Pagination token from a prior call"] = None,
+        sort: Annotated[Optional[str], "Sort expression (e.g. 'created_timestamp|desc')"] = None,
+    ) -> str:
+        """Find vulnerability IDs matching an FQL filter."""
+        result = self._query_vulnerabilities(filter=filter, limit=limit, after=after, sort=sort)
+
+        if not result.get("success"):
+            return format_text_response(f"Failed to query vulnerabilities: {result.get('error')}", raw=True)
+
+        ids = result["ids"]
+        lines = [
+            f"Spotlight Vulnerability IDs: {len(ids)} returned (total={result.get('total', 'unknown')})",
+            "",
+        ]
+        if result.get("after"):
+            lines.append(f"Next page token: `{result['after']}`")
+            lines.append("")
+        if not ids:
+            lines.append("No vulnerabilities matched the filter.")
+        else:
+            for i, vid in enumerate(ids, 1):
+                lines.append(f"{i}. {vid}")
+        return format_text_response("\n".join(lines), raw=True)
+
+    def _query_vulnerabilities(self, filter, limit=50, after=None, sort=None):
+        if not SPOTLIGHT_VULNS_AVAILABLE:
+            return {"success": False, "error": "SpotlightVulnerabilities client not available"}
+        if not filter:
+            return {"success": False, "error": "filter is required (e.g. status:'open')"}
+        try:
+            svc = self._service(SpotlightVulnerabilities)
+            kwargs = {"filter": filter, "limit": min(limit, 500)}
+            if after:
+                kwargs["after"] = after
+            if sort:
+                kwargs["sort"] = sort
+            r = svc.query_vulnerabilities(**kwargs)
+            if r["status_code"] != 200:
+                return {"success": False, "error": format_api_error(r, "Failed to query vulnerabilities", operation="query_vulnerabilities")}
+            body = r.get("body", {})
+            ids = body.get("resources", [])
+            meta = body.get("meta", {}).get("pagination", {})
+            return {
+                "success": True,
+                "ids": ids,
+                "total": meta.get("total", len(ids)),
+                "after": meta.get("after"),
+            }
+        except Exception as e:
+            return {"success": False, "error": f"Error querying vulnerabilities: {e}"}

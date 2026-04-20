@@ -95,3 +95,92 @@ class TestSpotlightVulnScopes:
     def test_remediations_v2_scope(self):
         from crowdstrike_mcp.common.api_scopes import get_required_scopes
         assert get_required_scopes("get_remediations_v2") == ["spotlight-vulnerabilities:read"]
+
+
+@pytest.fixture
+def spotlight_vuln_module(mock_client):
+    """Create SpotlightModule with both Spotlight APIs mocked."""
+    with patch("crowdstrike_mcp.modules.spotlight.SpotlightEvaluationLogic") as MockEval, \
+         patch("crowdstrike_mcp.modules.spotlight.SpotlightVulnerabilities") as MockVulns:
+        mock_eval = MagicMock()
+        mock_vulns = MagicMock()
+        MockEval.return_value = mock_eval
+        MockVulns.return_value = mock_vulns
+        from crowdstrike_mcp.modules.spotlight import SpotlightModule
+
+        module = SpotlightModule(mock_client)
+        # route _service(cls) to the right mock based on class name
+        def _fake_service(cls):
+            return mock_vulns if cls.__name__ == "SpotlightVulnerabilities" else mock_eval
+        module._service = _fake_service
+        module.falcon_eval = mock_eval
+        module.falcon_vulns = mock_vulns
+        return module
+
+
+class TestSpotlightQueryVulnerabilities:
+    def test_returns_vuln_ids(self, spotlight_vuln_module):
+        spotlight_vuln_module.falcon_vulns.query_vulnerabilities.return_value = {
+            "status_code": 200,
+            "body": {"resources": ["vuln-1", "vuln-2", "vuln-3"]},
+        }
+        result = asyncio.run(
+            spotlight_vuln_module.spotlight_query_vulnerabilities(filter="status:'open'")
+        )
+        assert "vuln-1" in result
+        assert "3" in result  # count
+
+    def test_passes_filter_and_limit(self, spotlight_vuln_module):
+        spotlight_vuln_module.falcon_vulns.query_vulnerabilities.return_value = {
+            "status_code": 200,
+            "body": {"resources": []},
+        }
+        asyncio.run(
+            spotlight_vuln_module.spotlight_query_vulnerabilities(
+                filter="cve.id:'CVE-2024-1234'", limit=25
+            )
+        )
+        spotlight_vuln_module.falcon_vulns.query_vulnerabilities.assert_called_once()
+        kwargs = spotlight_vuln_module.falcon_vulns.query_vulnerabilities.call_args.kwargs
+        assert kwargs["filter"] == "cve.id:'CVE-2024-1234'"
+        assert kwargs["limit"] == 25
+
+    def test_caps_limit_at_500(self, spotlight_vuln_module):
+        spotlight_vuln_module.falcon_vulns.query_vulnerabilities.return_value = {
+            "status_code": 200,
+            "body": {"resources": []},
+        }
+        asyncio.run(
+            spotlight_vuln_module.spotlight_query_vulnerabilities(
+                filter="status:'open'", limit=9999
+            )
+        )
+        kwargs = spotlight_vuln_module.falcon_vulns.query_vulnerabilities.call_args.kwargs
+        assert kwargs["limit"] == 500
+
+    def test_requires_filter(self, spotlight_vuln_module):
+        result = asyncio.run(spotlight_vuln_module.spotlight_query_vulnerabilities(filter=""))
+        assert "filter" in result.lower()
+
+    def test_passes_after_token(self, spotlight_vuln_module):
+        spotlight_vuln_module.falcon_vulns.query_vulnerabilities.return_value = {
+            "status_code": 200,
+            "body": {"resources": []},
+        }
+        asyncio.run(
+            spotlight_vuln_module.spotlight_query_vulnerabilities(
+                filter="status:'open'", after="token-xyz"
+            )
+        )
+        kwargs = spotlight_vuln_module.falcon_vulns.query_vulnerabilities.call_args.kwargs
+        assert kwargs["after"] == "token-xyz"
+
+    def test_handles_api_error(self, spotlight_vuln_module):
+        spotlight_vuln_module.falcon_vulns.query_vulnerabilities.return_value = {
+            "status_code": 403,
+            "body": {"errors": [{"message": "Forbidden"}]},
+        }
+        result = asyncio.run(
+            spotlight_vuln_module.spotlight_query_vulnerabilities(filter="status:'open'")
+        )
+        assert "failed" in result.lower()
