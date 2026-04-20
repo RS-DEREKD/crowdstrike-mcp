@@ -184,3 +184,43 @@ class TestSpotlightQueryVulnerabilities:
             spotlight_vuln_module.spotlight_query_vulnerabilities(filter="status:'open'")
         )
         assert "failed" in result.lower()
+
+
+class TestSpotlightGetVulnerabilities:
+    def test_returns_vuln_details(self, spotlight_vuln_module):
+        spotlight_vuln_module.falcon_vulns.get_vulnerabilities.return_value = {
+            "status_code": 200,
+            "body": {"resources": [
+                {
+                    "id": "vuln-1",
+                    "cve": {"id": "CVE-2024-1234", "severity": "CRITICAL", "base_score": 9.8},
+                    "host_info": {"hostname": "web-01", "platform_name": "Linux"},
+                    "status": "open",
+                    "created_timestamp": "2026-04-01T00:00:00Z",
+                }
+            ]},
+        }
+        result = asyncio.run(
+            spotlight_vuln_module.spotlight_get_vulnerabilities(ids=["vuln-1"])
+        )
+        assert "CVE-2024-1234" in result
+        assert "CRITICAL" in result
+        assert "web-01" in result
+
+    def test_requires_ids(self, spotlight_vuln_module):
+        result = asyncio.run(spotlight_vuln_module.spotlight_get_vulnerabilities(ids=[]))
+        assert "ids" in result.lower() or "required" in result.lower()
+
+    def test_passes_ids_to_falconpy(self, spotlight_vuln_module):
+        spotlight_vuln_module.falcon_vulns.get_vulnerabilities.return_value = {
+            "status_code": 200, "body": {"resources": []},
+        }
+        asyncio.run(spotlight_vuln_module.spotlight_get_vulnerabilities(ids=["a", "b"]))
+        spotlight_vuln_module.falcon_vulns.get_vulnerabilities.assert_called_once_with(ids=["a", "b"])
+
+    def test_handles_api_error(self, spotlight_vuln_module):
+        spotlight_vuln_module.falcon_vulns.get_vulnerabilities.return_value = {
+            "status_code": 500, "body": {"errors": [{"message": "boom"}]},
+        }
+        result = asyncio.run(spotlight_vuln_module.spotlight_get_vulnerabilities(ids=["x"]))
+        assert "failed" in result.lower()

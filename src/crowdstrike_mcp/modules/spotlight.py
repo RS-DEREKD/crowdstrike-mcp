@@ -66,6 +66,15 @@ class SpotlightModule(BaseModule):
                 "for full records."
             ),
         )
+        self._add_tool(
+            server,
+            self.spotlight_get_vulnerabilities,
+            name="spotlight_get_vulnerabilities",
+            description=(
+                "Fetch full vulnerability records by ID: CVE metadata, severity, host "
+                "info, exploit status, affected apps. Pair with spotlight_query_vulnerabilities."
+            ),
+        )
 
     async def spotlight_supported_evaluations(
         self,
@@ -135,6 +144,34 @@ class SpotlightModule(BaseModule):
                 lines.append(f"{i}. {vid}")
         return format_text_response("\n".join(lines), raw=True)
 
+    async def spotlight_get_vulnerabilities(
+        self,
+        ids: Annotated[list[str], "Vulnerability IDs (from spotlight_query_vulnerabilities)"],
+    ) -> str:
+        """Fetch full vulnerability records by ID."""
+        result = self._get_vulnerabilities(ids)
+        if not result.get("success"):
+            return format_text_response(f"Failed to get vulnerabilities: {result.get('error')}", raw=True)
+
+        resources = result["resources"]
+        lines = [f"Spotlight Vulnerabilities: {len(resources)} records", ""]
+        if not resources:
+            lines.append("No records returned.")
+        else:
+            for i, v in enumerate(resources, 1):
+                cve = v.get("cve", {}) or {}
+                host = v.get("host_info", {}) or {}
+                lines.append(f"{i}. **{cve.get('id', 'UNKNOWN CVE')}** [{cve.get('severity', '?')}] score={cve.get('base_score', '?')}")
+                lines.append(f"   Host: {host.get('hostname', '?')} ({host.get('platform_name', '?')})")
+                lines.append(f"   Status: {v.get('status', '?')} | Created: {v.get('created_timestamp', '?')}")
+                if cve.get("exploit_status") is not None:
+                    lines.append(f"   Exploit status: {cve['exploit_status']}")
+                if v.get("apps"):
+                    app_names = [a.get("product_name_version", "") for a in v["apps"][:3]]
+                    lines.append(f"   Apps: {'; '.join(a for a in app_names if a)}")
+                lines.append("")
+        return format_text_response("\n".join(lines), raw=True)
+
     def _query_vulnerabilities(self, filter, limit=50, after=None, sort=None):
         if not SPOTLIGHT_VULNS_AVAILABLE:
             return {"success": False, "error": "SpotlightVulnerabilities client not available"}
@@ -161,3 +198,17 @@ class SpotlightModule(BaseModule):
             }
         except Exception as e:
             return {"success": False, "error": f"Error querying vulnerabilities: {e}"}
+
+    def _get_vulnerabilities(self, ids):
+        if not SPOTLIGHT_VULNS_AVAILABLE:
+            return {"success": False, "error": "SpotlightVulnerabilities client not available"}
+        if not ids:
+            return {"success": False, "error": "ids list is required"}
+        try:
+            svc = self._service(SpotlightVulnerabilities)
+            r = svc.get_vulnerabilities(ids=ids)
+            if r["status_code"] != 200:
+                return {"success": False, "error": format_api_error(r, "Failed to get vulnerabilities", operation="get_vulnerabilities")}
+            return {"success": True, "resources": r.get("body", {}).get("resources", [])}
+        except Exception as e:
+            return {"success": False, "error": f"Error getting vulnerabilities: {e}"}
