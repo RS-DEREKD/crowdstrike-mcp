@@ -75,6 +75,17 @@ class SpotlightModule(BaseModule):
                 "info, exploit status, affected apps. Pair with spotlight_query_vulnerabilities."
             ),
         )
+        self._add_tool(
+            server,
+            self.spotlight_vulnerabilities_combined,
+            name="spotlight_vulnerabilities_combined",
+            description=(
+                "Query vulnerabilities with full record projection in one call. "
+                "Default tool for 'show me open CVEs matching X' — returns CVE, "
+                "severity, host, status, and affected apps. Prefer this over the "
+                "query/get split unless paginating very large result sets."
+            ),
+        )
 
     async def spotlight_supported_evaluations(
         self,
@@ -172,6 +183,20 @@ class SpotlightModule(BaseModule):
                 lines.append("")
         return format_text_response("\n".join(lines), raw=True)
 
+    async def spotlight_vulnerabilities_combined(
+        self,
+        filter: Annotated[str, "FQL filter expression (required)"],
+        limit: Annotated[int, "Max results (default 50, max 500)"] = 50,
+        facet: Annotated[Optional[list[str]], "Facets to include (default: cve, host_info)"] = None,
+        after: Annotated[Optional[str], "Pagination token"] = None,
+        sort: Annotated[Optional[str], "Sort expression"] = None,
+    ) -> str:
+        """Query + get in one call; the recommended default for vuln lookups."""
+        result = self._vulnerabilities_combined(filter=filter, limit=limit, facet=facet, after=after, sort=sort)
+        if not result.get("success"):
+            return format_text_response(f"Failed to query vulnerabilities: {result.get('error')}", raw=True)
+        return self._format_vuln_list(result, header="Spotlight Vulnerabilities (combined)")
+
     def _query_vulnerabilities(self, filter, limit=50, after=None, sort=None):
         if not SPOTLIGHT_VULNS_AVAILABLE:
             return {"success": False, "error": "SpotlightVulnerabilities client not available"}
@@ -212,3 +237,72 @@ class SpotlightModule(BaseModule):
             return {"success": True, "resources": r.get("body", {}).get("resources", [])}
         except Exception as e:
             return {"success": False, "error": f"Error getting vulnerabilities: {e}"}
+
+    @staticmethod
+    def _project_vuln(v: dict) -> dict:
+        cve = v.get("cve", {}) or {}
+        host = v.get("host_info", {}) or {}
+        return {
+            "id": v.get("id", ""),
+            "cve_id": cve.get("id", ""),
+            "severity": cve.get("severity", ""),
+            "base_score": cve.get("base_score"),
+            "exploit_status": cve.get("exploit_status"),
+            "status": v.get("status", ""),
+            "hostname": host.get("hostname", ""),
+            "platform": host.get("platform_name", ""),
+            "created_timestamp": v.get("created_timestamp", ""),
+            "apps": [a.get("product_name_version", "") for a in (v.get("apps") or [])[:5]],
+            "remediation_ids": (v.get("remediation") or {}).get("ids", []),
+        }
+
+    def _format_vuln_list(self, result: dict, header: str) -> str:
+        items = result["vulns"]
+        lines = [f"{header}: {len(items)} returned (total={result.get('total', 'unknown')})", ""]
+        if result.get("after"):
+            lines.append(f"Next page token: `{result['after']}`")
+            lines.append("")
+        if not items:
+            lines.append("No vulnerabilities matched the filter.")
+        else:
+            for i, v in enumerate(items, 1):
+                lines.append(
+                    f"{i}. **{v['cve_id'] or '(no CVE)'}** [{v['severity']}] score={v['base_score']} "
+                    f"exploit={v['exploit_status']}"
+                )
+                lines.append(f"   Host: {v['hostname']} ({v['platform']}) | Status: {v['status']} | Created: {v['created_timestamp']}")
+                if v["apps"]:
+                    lines.append(f"   Apps: {'; '.join(a for a in v['apps'] if a)}")
+                lines.append("")
+        return format_text_response("\n".join(lines), raw=True)
+
+    def _vulnerabilities_combined(self, filter, limit=50, facet=None, after=None, sort=None):
+        if not SPOTLIGHT_VULNS_AVAILABLE:
+            return {"success": False, "error": "SpotlightVulnerabilities client not available"}
+        if not filter:
+            return {"success": False, "error": "filter is required"}
+        try:
+            svc = self._service(SpotlightVulnerabilities)
+            kwargs = {
+                "filter": filter,
+                "limit": min(limit, 500),
+                "facet": facet if facet else ["cve", "host_info"],
+            }
+            if after:
+                kwargs["after"] = after
+            if sort:
+                kwargs["sort"] = sort
+            r = svc.query_vulnerabilities_combined(**kwargs)
+            if r["status_code"] != 200:
+                return {"success": False, "error": format_api_error(r, "Failed to query vulnerabilities combined", operation="query_vulnerabilities_combined")}
+            body = r.get("body", {})
+            resources = body.get("resources", [])
+            meta = body.get("meta", {}).get("pagination", {})
+            return {
+                "success": True,
+                "vulns": [self._project_vuln(v) for v in resources],
+                "total": meta.get("total", len(resources)),
+                "after": meta.get("after"),
+            }
+        except Exception as e:
+            return {"success": False, "error": f"Error in combined query: {e}"}

@@ -224,3 +224,71 @@ class TestSpotlightGetVulnerabilities:
         }
         result = asyncio.run(spotlight_vuln_module.spotlight_get_vulnerabilities(ids=["x"]))
         assert "failed" in result.lower()
+
+
+class TestSpotlightVulnerabilitiesCombined:
+    def test_returns_projected_records(self, spotlight_vuln_module):
+        spotlight_vuln_module.falcon_vulns.query_vulnerabilities_combined.return_value = {
+            "status_code": 200,
+            "body": {"resources": [
+                {
+                    "id": "vuln-1",
+                    "cve": {"id": "CVE-2024-1234", "severity": "CRITICAL", "base_score": 9.8, "exploit_status": 90},
+                    "host_info": {"hostname": "web-01", "platform_name": "Linux"},
+                    "status": "open",
+                    "created_timestamp": "2026-04-01T00:00:00Z",
+                    "apps": [{"product_name_version": "openssh 8.0"}],
+                }
+            ]},
+        }
+        result = asyncio.run(
+            spotlight_vuln_module.spotlight_vulnerabilities_combined(filter="status:'open'")
+        )
+        assert "CVE-2024-1234" in result
+        assert "CRITICAL" in result
+        assert "web-01" in result
+
+    def test_default_facets_include_cve_and_host(self, spotlight_vuln_module):
+        spotlight_vuln_module.falcon_vulns.query_vulnerabilities_combined.return_value = {
+            "status_code": 200, "body": {"resources": []},
+        }
+        asyncio.run(
+            spotlight_vuln_module.spotlight_vulnerabilities_combined(filter="status:'open'")
+        )
+        kwargs = spotlight_vuln_module.falcon_vulns.query_vulnerabilities_combined.call_args.kwargs
+        assert kwargs["facet"] == ["cve", "host_info"]
+
+    def test_custom_facets_override_default(self, spotlight_vuln_module):
+        spotlight_vuln_module.falcon_vulns.query_vulnerabilities_combined.return_value = {
+            "status_code": 200, "body": {"resources": []},
+        }
+        asyncio.run(
+            spotlight_vuln_module.spotlight_vulnerabilities_combined(
+                filter="status:'open'", facet=["cve", "remediation"]
+            )
+        )
+        kwargs = spotlight_vuln_module.falcon_vulns.query_vulnerabilities_combined.call_args.kwargs
+        assert kwargs["facet"] == ["cve", "remediation"]
+
+    def test_requires_filter(self, spotlight_vuln_module):
+        result = asyncio.run(spotlight_vuln_module.spotlight_vulnerabilities_combined(filter=""))
+        assert "filter" in result.lower()
+
+    def test_caps_limit(self, spotlight_vuln_module):
+        spotlight_vuln_module.falcon_vulns.query_vulnerabilities_combined.return_value = {
+            "status_code": 200, "body": {"resources": []},
+        }
+        asyncio.run(
+            spotlight_vuln_module.spotlight_vulnerabilities_combined(filter="status:'open'", limit=9999)
+        )
+        kwargs = spotlight_vuln_module.falcon_vulns.query_vulnerabilities_combined.call_args.kwargs
+        assert kwargs["limit"] == 500
+
+    def test_handles_api_error(self, spotlight_vuln_module):
+        spotlight_vuln_module.falcon_vulns.query_vulnerabilities_combined.return_value = {
+            "status_code": 403, "body": {"errors": [{"message": "Forbidden"}]},
+        }
+        result = asyncio.run(
+            spotlight_vuln_module.spotlight_vulnerabilities_combined(filter="status:'open'")
+        )
+        assert "failed" in result.lower()
