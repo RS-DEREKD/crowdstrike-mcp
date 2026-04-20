@@ -221,6 +221,40 @@ CQL_SYNTAX = """\
 """
 
 
+SPOTLIGHT_VULN_FQL = """\
+# Spotlight Vulnerabilities FQL Syntax (query_vulnerabilities / query_vulnerabilities_combined)
+
+## Common Fields
+- `aid` — Agent/device ID (UUID). Example: `aid:'abc123...'`
+- `cve.id` — CVE identifier. Example: `cve.id:'CVE-2024-1234'`
+- `cve.severity` — Severity string: 'CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'UNKNOWN'
+- `cve.exploit_status` — Integer 0–90 (higher = more evidence of exploitation in the wild)
+- `status` — Vulnerability state: 'open', 'closed', 'reopen', 'expired'
+- `created_timestamp` — ISO 8601 timestamp. Example: `created_timestamp:>='now-30d'`
+- `closed_timestamp` — ISO 8601 timestamp.
+- `host_info.hostname` — Hostname (case-sensitive).
+- `host_info.platform_name` — 'Windows', 'Mac', 'Linux'.
+- `apps.product_name_version` — Product name + version string.
+- `suppression_info.is_suppressed` — Boolean.
+
+## Triage Recipes
+- Open criticals on a host: `aid:'<device_id>'+status:'open'+cve.severity:'CRITICAL'`
+- Fleet affected by a CVE: `cve.id:'CVE-2024-1234'+status:'open'`
+- Exploit-in-the-wild only: `status:'open'+cve.exploit_status:>=60`
+
+## Combining
+AND with `+`. OR within a single field uses `,`. Example:
+`status:'open'+cve.severity:['CRITICAL','HIGH']`
+
+## Facet Parameter
+`query_vulnerabilities_combined` accepts `facet` to include joined data:
+- `cve` — CVE metadata (severity, score, exprt_rating)
+- `host_info` — Hostname, platform, OS
+- `remediation` — Remediation IDs
+- `evaluation_logic` — Why Spotlight considers the host vulnerable
+"""
+
+
 def register_fql_resources(server: FastMCP) -> list[str]:
     """Register all FQL/CQL documentation resources with the server.
 

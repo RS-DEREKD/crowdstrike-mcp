@@ -10,7 +10,19 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, Annotated, Optional
 
-from falconpy import SpotlightEvaluationLogic
+try:
+    from falconpy import SpotlightEvaluationLogic
+
+    SPOTLIGHT_EVAL_AVAILABLE = True
+except ImportError:
+    SPOTLIGHT_EVAL_AVAILABLE = False
+
+try:
+    from falconpy import SpotlightVulnerabilities
+
+    SPOTLIGHT_VULNS_AVAILABLE = True
+except ImportError:
+    SPOTLIGHT_VULNS_AVAILABLE = False
 
 from crowdstrike_mcp.common.errors import format_api_error
 from crowdstrike_mcp.modules.base import BaseModule
@@ -25,6 +37,11 @@ class SpotlightModule(BaseModule):
 
     def __init__(self, client):
         super().__init__(client)
+        if not SPOTLIGHT_EVAL_AVAILABLE and not SPOTLIGHT_VULNS_AVAILABLE:
+            raise ImportError(
+                "Neither SpotlightEvaluationLogic nor SpotlightVulnerabilities available. "
+                "Ensure crowdstrike-falconpy >= 1.6.1 is installed."
+            )
         self._log("Initialized")
 
     def register_tools(self, server: FastMCP) -> None:

@@ -75,3 +75,23 @@ class TestSpotlightToolRegistration:
         server.tool.return_value = lambda fn: fn
         spotlight_module.register_tools(server)
         assert "spotlight_supported_evaluations" in spotlight_module.tools
+
+
+class TestSpotlightVulnScopes:
+    """Scope mappings for new operations exist in api_scopes."""
+
+    def test_query_vulnerabilities_scope(self):
+        from crowdstrike_mcp.common.api_scopes import get_required_scopes
+        assert get_required_scopes("query_vulnerabilities") == ["spotlight-vulnerabilities:read"]
+
+    def test_get_vulnerabilities_scope(self):
+        from crowdstrike_mcp.common.api_scopes import get_required_scopes
+        assert get_required_scopes("get_vulnerabilities") == ["spotlight-vulnerabilities:read"]
+
+    def test_combined_vulnerabilities_scope(self):
+        from crowdstrike_mcp.common.api_scopes import get_required_scopes
+        assert get_required_scopes("query_vulnerabilities_combined") == ["spotlight-vulnerabilities:read"]
+
+    def test_remediations_v2_scope(self):
+        from crowdstrike_mcp.common.api_scopes import get_required_scopes
+        assert get_required_scopes("get_remediations_v2") == ["spotlight-vulnerabilities:read"]

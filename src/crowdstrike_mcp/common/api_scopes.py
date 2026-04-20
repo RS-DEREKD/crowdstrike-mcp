@@ -59,6 +59,11 @@ OPERATION_SCOPES = {
     "get_combined_compliance_by_account": ["cloud-security-assets:read"],
     # Spotlight Evaluation Logic
     "combinedSupportedEvaluationExt": ["spotlight-vulnerabilities:read"],
+    # Spotlight Vulnerabilities
+    "query_vulnerabilities": ["spotlight-vulnerabilities:read"],
+    "get_vulnerabilities": ["spotlight-vulnerabilities:read"],
+    "query_vulnerabilities_combined": ["spotlight-vulnerabilities:read"],
+    "get_remediations_v2": ["spotlight-vulnerabilities:read"],
     # CAO Hunting
     "search_queries": ["cao-hunting:read"],
     "get_queries": ["cao-hunting:read"],
