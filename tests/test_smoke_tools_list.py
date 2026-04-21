@@ -29,6 +29,8 @@ EXPECTED_READ_TOOLS = {
     "alert_analysis",
     "ngsiem_alert_analysis",
     "ngsiem_query",
+    "ngsiem_list_saved_queries",
+    "ngsiem_get_saved_query_template",
     "host_lookup",
     "host_login_history",
     "host_network_history",

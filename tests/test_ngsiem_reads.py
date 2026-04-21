@@ -1,5 +1,6 @@
 """Tests for FR 07 NGSIEM read-expansion tools."""
 
+import asyncio
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -56,3 +57,90 @@ class TestCallAndUnwrap:
         result = ngsiem_module._call_and_unwrap(fake_method, "op_name")
         assert result["success"] is False
         assert "boom" in result["error"]
+
+
+class TestListSavedQueries:
+    def test_returns_compact_projection_by_default(self, ngsiem_module):
+        ngsiem_module.falcon.list_saved_queries.return_value = {
+            "status_code": 200,
+            "body": {"resources": [
+                {"id": "q1", "name": "enrich_users", "last_modified": "2026-04-01",
+                 "query": "..." * 100, "extra": "ignored"},
+                {"id": "q2", "name": "enrich_hosts", "last_modified": "2026-04-02"},
+            ]},
+        }
+        result = asyncio.run(ngsiem_module.ngsiem_list_saved_queries())
+        assert "q1" in result and "enrich_users" in result
+        assert "q2" in result and "enrich_hosts" in result
+        # Bulk body fields must not leak in compact mode
+        assert "extra" not in result
+
+    def test_detail_true_returns_full_records(self, ngsiem_module):
+        ngsiem_module.falcon.list_saved_queries.return_value = {
+            "status_code": 200,
+            "body": {"resources": [
+                {"id": "q1", "name": "x", "last_modified": "t", "extra": "keep_me"},
+            ]},
+        }
+        result = asyncio.run(ngsiem_module.ngsiem_list_saved_queries(detail=True))
+        assert "keep_me" in result
+
+    def test_passes_filter_and_limit(self, ngsiem_module):
+        ngsiem_module.falcon.list_saved_queries.return_value = {
+            "status_code": 200, "body": {"resources": []},
+        }
+        asyncio.run(ngsiem_module.ngsiem_list_saved_queries(filter="name:'enrich_*'", limit=25))
+        kwargs = ngsiem_module.falcon.list_saved_queries.call_args.kwargs
+        assert kwargs["filter"] == "name:'enrich_*'"
+        assert kwargs["limit"] == 25
+
+    def test_caps_limit_at_1000(self, ngsiem_module):
+        ngsiem_module.falcon.list_saved_queries.return_value = {
+            "status_code": 200, "body": {"resources": []},
+        }
+        asyncio.run(ngsiem_module.ngsiem_list_saved_queries(limit=9999))
+        kwargs = ngsiem_module.falcon.list_saved_queries.call_args.kwargs
+        assert kwargs["limit"] == 1000
+
+    def test_empty_result_message(self, ngsiem_module):
+        ngsiem_module.falcon.list_saved_queries.return_value = {
+            "status_code": 200, "body": {"resources": []},
+        }
+        result = asyncio.run(ngsiem_module.ngsiem_list_saved_queries())
+        assert "no" in result.lower() or "0" in result
+
+    def test_handles_api_error(self, ngsiem_module):
+        ngsiem_module.falcon.list_saved_queries.return_value = {
+            "status_code": 403, "body": {"errors": [{"message": "Forbidden"}]},
+        }
+        result = asyncio.run(ngsiem_module.ngsiem_list_saved_queries())
+        assert "failed" in result.lower()
+
+
+class TestGetSavedQueryTemplate:
+    def test_returns_full_template(self, ngsiem_module):
+        ngsiem_module.falcon.get_saved_query_template.return_value = {
+            "status_code": 200,
+            "body": {"resources": [
+                {"id": "q1", "name": "enrich_users", "query_string": "#repo=all | ..."},
+            ]},
+        }
+        result = asyncio.run(ngsiem_module.ngsiem_get_saved_query_template(id="q1"))
+        assert "q1" in result
+        assert "enrich_users" in result
+        assert "#repo=all" in result
+
+    def test_passes_id(self, ngsiem_module):
+        ngsiem_module.falcon.get_saved_query_template.return_value = {
+            "status_code": 200, "body": {"resources": []},
+        }
+        asyncio.run(ngsiem_module.ngsiem_get_saved_query_template(id="abc"))
+        kwargs = ngsiem_module.falcon.get_saved_query_template.call_args.kwargs
+        assert kwargs["ids"] == "abc" or kwargs["ids"] == ["abc"]
+
+    def test_handles_api_error(self, ngsiem_module):
+        ngsiem_module.falcon.get_saved_query_template.return_value = {
+            "status_code": 404, "body": {"errors": [{"message": "Not found"}]},
+        }
+        result = asyncio.run(ngsiem_module.ngsiem_get_saved_query_template(id="missing"))
+        assert "failed" in result.lower()

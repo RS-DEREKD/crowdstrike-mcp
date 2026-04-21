@@ -49,6 +49,18 @@ class NGSIEMModule(BaseModule):
             name="ngsiem_query",
             description=("Execute NGSIEM/CQL query across all CrowdStrike logs using search-all repository"),
         )
+        self._add_tool(
+            server,
+            self.ngsiem_list_saved_queries,
+            name="ngsiem_list_saved_queries",
+            description="Enumerate saved NGSIEM queries (compact projection by default).",
+        )
+        self._add_tool(
+            server,
+            self.ngsiem_get_saved_query_template,
+            name="ngsiem_get_saved_query_template",
+            description="Fetch the live body + metadata of one saved NGSIEM query.",
+        )
 
     async def ngsiem_query(
         self,
@@ -253,6 +265,112 @@ class NGSIEMModule(BaseModule):
     # Shared unwrap helper (FR 07 read-expansion tools)
     # ------------------------------------------------------------------
 
+    _COMPACT_LIST_FIELDS = ("id", "name", "last_modified", "state", "status")
+
+    @classmethod
+    def _project_compact(cls, records: list) -> list:
+        """Return records filtered to the compact projection field set."""
+        projected = []
+        for rec in records:
+            if not isinstance(rec, dict):
+                projected.append(rec)
+                continue
+            projected.append({k: rec[k] for k in cls._COMPACT_LIST_FIELDS if k in rec})
+        return projected
+
+    def _format_list(
+        self,
+        result: dict,
+        *,
+        tool_name: str,
+        label: str,
+        filter_: str | None,
+        limit: int,
+        detail: bool,
+        meta_extra: dict | None = None,
+    ) -> str:
+        """Shared formatter for the compact/detail list tools."""
+        if not result.get("success"):
+            return format_text_response(
+                f"{tool_name} failed:\n{result.get('error', 'Unknown error')}",
+                tool_name=tool_name,
+                raw=True,
+            )
+        records = result["resources"] or []
+        if not detail:
+            records = self._project_compact(records)
+        header = [
+            f"{label} ({len(records)} result{'s' if len(records) != 1 else ''}):",
+        ]
+        if filter_:
+            header.append(f"Filter: {filter_}")
+        header.append(f"Limit: {limit}")
+        header.append(f"Detail: {detail}")
+        header.append("")
+        if not records:
+            header.append(f"No {label.lower()} found.")
+            return format_text_response(
+                "\n".join(header),
+                tool_name=tool_name,
+                raw=True,
+                structured_data={"records": records, **(meta_extra or {})},
+                metadata={"filter": filter_, "limit": limit},
+            )
+        for i, rec in enumerate(records[:50]):
+            header.append(f"#{i + 1}:")
+            if isinstance(rec, dict):
+                for k, v in rec.items():
+                    sv = str(v)
+                    if len(sv) > 300:
+                        sv = sv[:300] + "..."
+                    header.append(f"  {k}: {sv}")
+            else:
+                header.append(f"  {rec}")
+            header.append("")
+        if len(records) > 50:
+            header.append(f"... and {len(records) - 50} more records")
+        return format_text_response(
+            "\n".join(header),
+            tool_name=tool_name,
+            raw=True,
+            structured_data={"records": records, **(meta_extra or {})},
+            metadata={"filter": filter_, "limit": limit},
+        )
+
+    def _format_single(
+        self,
+        result: dict,
+        *,
+        tool_name: str,
+        label: str,
+        identifier: str,
+    ) -> str:
+        """Shared formatter for the get_* single-record tools."""
+        if not result.get("success"):
+            return format_text_response(
+                f"{tool_name} failed:\n{result.get('error', 'Unknown error')}",
+                tool_name=tool_name,
+                raw=True,
+            )
+        resources = result["resources"]
+        record = resources[0] if isinstance(resources, list) and resources else resources
+        lines = [f"{label} ({identifier}):", ""]
+        if isinstance(record, dict):
+            for k, v in record.items():
+                sv = str(v)
+                if len(sv) > 2000:
+                    sv = sv[:2000] + "..."
+                lines.append(f"{k}: {sv}")
+        else:
+            lines.append(str(record))
+        return format_text_response(
+            "\n".join(lines),
+            tool_name=tool_name,
+            raw=True,
+            structured_data={"record": record},
+            metadata={"id": identifier},
+        )
+
     def _call_and_unwrap(self, method, operation: str, **kwargs) -> dict:
         """Call a falconpy method and normalize the response shape.
 
@@ -298,3 +416,45 @@ class NGSIEMModule(BaseModule):
             "success": False,
             "error": f"{operation} failed (HTTP {status}): {'; '.join(error_details)}",
         }
+
+    # ------------------------------------------------------------------
+    # FR 07 saved-query tools
+    # ------------------------------------------------------------------
+
+    async def ngsiem_list_saved_queries(
+        self,
+        filter: Annotated[Optional[str], "FQL filter (optional)"] = None,
+        limit: Annotated[int, "Max records (default 100, cap 1000)"] = 100,
+        detail: Annotated[bool, "Return full records instead of compact projection"] = False,
+    ) -> str:
+        """Enumerate saved NGSIEM searches (enrichment functions, etc.)."""
+        limit = min(max(limit, 1), 1000)
+        falcon = self._service(NGSIEM)
+        kwargs: dict = {"limit": limit}
+        if filter:
+            kwargs["filter"] = filter
+        result = self._call_and_unwrap(falcon.list_saved_queries, "list_saved_queries", **kwargs)
+        return self._format_list(
+            result,
+            tool_name="ngsiem_list_saved_queries",
+            label="Saved Queries",
+            filter_=filter,
+            limit=limit,
+            detail=detail,
+        )
+
+    async def ngsiem_get_saved_query_template(
+        self,
+        id: Annotated[str, "Saved query ID"],
+    ) -> str:
+        """Fetch the live body + metadata of one saved NGSIEM search."""
+        falcon = self._service(NGSIEM)
+        result = self._call_and_unwrap(
+            falcon.get_saved_query_template, "get_saved_query_template", ids=id
+        )
+        return self._format_single(
+            result,
+            tool_name="ngsiem_get_saved_query_template",
+            label="Saved Query Template",
+            identifier=id,
+        )
