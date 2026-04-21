@@ -1,8 +1,13 @@
 """
-Spotlight Module — vulnerability evaluation logic via the SpotlightEvaluationLogic API.
+Spotlight Module — vulnerability evaluation and Spotlight Vulnerabilities API.
 
 Tools:
-  spotlight_supported_evaluations — Get supported vulnerability evaluation logic
+  spotlight_supported_evaluations    — Supported evaluation logic (coverage, platforms)
+  spotlight_query_vulnerabilities    — Find vulnerability IDs by FQL filter
+  spotlight_get_vulnerabilities      — Fetch full vulnerability records by ID
+  spotlight_vulnerabilities_combined — One-shot query+get (recommended default)
+  spotlight_get_remediations         — Remediation instructions by remediation ID
+  spotlight_host_vulns               — Triage shortcut: open vulns for a specific host
 """
 
 from __future__ import annotations
@@ -43,6 +48,19 @@ class SpotlightModule(BaseModule):
                 "Ensure crowdstrike-falconpy >= 1.6.1 is installed."
             )
         self._log("Initialized")
+
+    def register_resources(self, server: FastMCP) -> None:
+        from crowdstrike_mcp.resources.fql_guides import SPOTLIGHT_VULN_FQL
+
+        def _spotlight_vuln_fql():
+            return SPOTLIGHT_VULN_FQL
+
+        server.resource(
+            "falcon://fql/spotlight-vulnerabilities",
+            name="Spotlight Vulnerabilities FQL Syntax",
+            description="Documentation: FQL filter syntax for Spotlight vulnerability queries",
+        )(_spotlight_vuln_fql)
+        self.resources.append("falcon://fql/spotlight-vulnerabilities")
 
     def register_tools(self, server: FastMCP) -> None:
         self._add_tool(

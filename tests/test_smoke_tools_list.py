@@ -55,6 +55,11 @@ EXPECTED_READ_TOOLS = {
     "correlation_list_templates",
     "correlation_get_template",
     "spotlight_supported_evaluations",
+    "spotlight_query_vulnerabilities",
+    "spotlight_get_vulnerabilities",
+    "spotlight_vulnerabilities_combined",
+    "spotlight_get_remediations",
+    "spotlight_host_vulns",
     "get_stored_response",
     "list_stored_responses",
 }

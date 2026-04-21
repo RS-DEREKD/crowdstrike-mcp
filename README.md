@@ -2,7 +2,7 @@
 
 A modular, multi-transport [Model Context Protocol](https://modelcontextprotocol.io/) server that connects AI assistants to the CrowdStrike Falcon platform. Query NG-SIEM logs, triage alerts, inspect endpoints, manage detection rules, and audit cloud security posture — all through natural language.
 
-**v3.0** — Modular auto-discovery architecture with 19 tools across 7 modules.
+**v3.0** — Modular auto-discovery architecture with 51 tools across 11 modules.
 
 ---
 
@@ -219,8 +219,66 @@ Each alert analysis routes to type-specific enrichment:
 |------|-------------|
 | `correlation_list_rules` | List detection/correlation rules with optional name search |
 | `correlation_get_rule` | Full rule details: CQL filter, severity, MITRE mapping |
-| `correlation_update_rule` | Enable/disable rules with audit comment |
+| `correlation_update_rule` | Enable/disable rules with audit comment (write) |
 | `correlation_export_rule` | Export rule in structured format |
+| `correlation_import_to_iac` | Export rules to IaC YAML for the detections repo (write) |
+| `correlation_list_templates` | List correlation rule templates |
+| `correlation_get_template` | Full template details |
+
+### CAO Hunting — `modules/cao_hunting.py`
+
+| Tool | Description |
+|------|-------------|
+| `cao_search_queries` | Search hunting queries by keyword or tag |
+| `cao_get_queries` | Retrieve hunting query details by ID |
+| `cao_search_guides` | Search hunting guides/playbooks |
+| `cao_get_guides` | Retrieve hunting guide details by ID |
+| `cao_aggregate` | Aggregate hunting query metrics |
+
+### Case Management — `modules/case_management.py`
+
+| Tool | Description |
+|------|-------------|
+| `case_query` | List/search cases with optional filters |
+| `case_get` | Get full case details by ID |
+| `case_create` | Create a new case (write) |
+| `case_update` | Update case fields — status, assignee, description (write) |
+| `case_add_alert_evidence` | Attach alerts as evidence to a case (write) |
+| `case_add_event_evidence` | Attach NG-SIEM events as evidence to a case (write) |
+| `case_add_tags` | Add tags to a case (write) |
+| `case_delete_tags` | Remove tags from a case (write) |
+| `case_upload_file` | Upload a file attachment to a case (write) |
+| `case_get_fields` | List available case field definitions |
+| `case_query_access_tags` | Query access control tags |
+| `case_get_access_tags` | Get access tags for a case |
+| `case_aggregate_access_tags` | Aggregate access tag statistics |
+| `case_get_rtr_file_metadata` | Get RTR file metadata attached to a case |
+| `case_get_rtr_recent_files` | List recent RTR files attached to a case |
+
+### Containment — `modules/response.py`
+
+| Tool | Description |
+|------|-------------|
+| `host_contain` | Network-isolate a host (write) |
+| `host_lift_containment` | Lift network isolation from a host (write) |
+
+### Response Store — `modules/response_store.py`
+
+| Tool | Description |
+|------|-------------|
+| `get_stored_response` | Retrieve a stored large response by ID |
+| `list_stored_responses` | List all responses currently in the store |
+
+### Spotlight — `modules/spotlight.py`
+
+| Tool | Description |
+|------|-------------|
+| `spotlight_supported_evaluations` | Assessment methods, OS/platform coverage, evaluation criteria |
+| `spotlight_query_vulnerabilities` | Find vulnerability IDs by FQL filter (host, CVE, severity, status) |
+| `spotlight_get_vulnerabilities` | Fetch full records: CVE metadata, severity, host, exploit status, apps |
+| `spotlight_vulnerabilities_combined` | One-shot query+get — recommended default for vuln lookups |
+| `spotlight_get_remediations` | Remediation instructions (patches, config changes) by remediation ID |
+| `spotlight_host_vulns` | Triage shortcut: all open vulns for a specific host by device_id |
 
 ### Cloud Registration — `modules/cloud_registration.py`
 
@@ -251,6 +309,7 @@ The server exposes FQL and CQL syntax documentation as MCP TextResources. AI ass
 | `falcon://fql/cloud-risks` | Cloud risk filter syntax |
 | `falcon://fql/cloud-iom` | IOM detection filter syntax |
 | `falcon://fql/cloud-assets` | Cloud asset filter syntax |
+| `falcon://fql/spotlight-vulnerabilities` | Spotlight vulnerability FQL syntax (aid, cve.id, severity, status) |
 | `falcon://cql/syntax` | CQL query language reference for NG-SIEM |
 
 ---
@@ -325,7 +384,7 @@ crowdstrike-mcp --modules cloudsecurity,cloudregistration
 crowdstrike-mcp --modules ngsiem,correlation
 ```
 
-**Available module names:** `alerts`, `casemanagement`, `cloudsecurity`, `cloudregistration`, `correlation`, `hosts`, `ngsiem`, `response`
+**Available module names:** `alerts`, `caohunting`, `casemanagement`, `cloudsecurity`, `cloudregistration`, `correlation`, `hosts`, `ngsiem`, `response`, `responsestore`, `spotlight`
 
 ---
 
@@ -466,7 +525,7 @@ Responses exceeding 20KB are automatically written to temporary files with a tru
 
 ### Shared OAuth2 Session
 
-All modules share a single `OAuth2` token through `FalconClient.auth_object`. This means one authentication handshake for all 19 tools, regardless of how many FalconPy service classes are instantiated.
+All modules share a single `OAuth2` token through `FalconClient.auth_object`. This means one authentication handshake for all 51 tools, regardless of how many FalconPy service classes are instantiated.
 
 ---
 
