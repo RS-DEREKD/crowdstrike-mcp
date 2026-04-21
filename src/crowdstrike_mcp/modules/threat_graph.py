@@ -106,6 +106,18 @@ class ThreatGraphModule(BaseModule):
                 "hard cap limit<=1000 (page via offset)."
             ),
         )
+        self._add_tool(
+            server,
+            self.threatgraph_get_ran_on,
+            name="threatgraph_get_ran_on",
+            description=(
+                "Look up where an indicator (hash, domain, IP) was observed in "
+                "the environment. type=hash_md5|hash_sha256|domain|ip_address. "
+                "Returns a list of hosts/processes where the indicator was seen — "
+                "the starting point for IOC → affected-process-chain pivots. "
+                "Defaults: limit=100, scope='device'; cap limit<=1000."
+            ),
+        )
 
     async def threatgraph_get_edge_types(self) -> str:
         """Refresh the edge-type cache and return the current list."""
@@ -209,6 +221,48 @@ class ThreatGraphModule(BaseModule):
             )
         except Exception as e:
             return format_text_response(f"Failed to get edges: {e}", raw=True)
+
+    async def threatgraph_get_ran_on(
+        self,
+        value: Annotated[str, "Indicator value (e.g. a SHA256 hash, a domain, or an IP)"],
+        type: Annotated[Literal["hash_md5", "hash_sha256", "domain", "ip_address"], "Indicator type"],
+        scope: Annotated[Literal["device", "customer", "global", "cspm", "cwpp"], "Query scope"] = "device",
+        limit: Annotated[int, "Max results (default 100, max 1000)"] = 100,
+        offset: Annotated[Optional[str], "Pagination token from a prior call"] = None,
+        nano: Annotated[bool, "Return nano-precision timestamps"] = False,
+    ) -> str:
+        """Find observations of an indicator across hosts/processes."""
+        if not value:
+            return format_text_response("Failed: value is required", raw=True)
+        if not type:
+            return format_text_response("Failed: type is required", raw=True)
+        if limit > self._MAX_LIMIT:
+            return format_text_response(
+                f"Failed: limit={limit} exceeds max {self._MAX_LIMIT}. "
+                f"Page through results using the offset argument.",
+                raw=True,
+            )
+        kwargs = {
+            "value": value, "type": type, "scope": scope,
+            "limit": limit, "nano": nano,
+        }
+        if offset:
+            kwargs["offset"] = offset
+        try:
+            falcon = self._service(ThreatGraph)
+            response = falcon.get_ran_on(**kwargs)
+            if response.get("status_code") != 200:
+                err = format_api_error(
+                    response,
+                    "Failed to get ran_on",
+                    operation="combined_ran_on_get",
+                )
+                return format_text_response(f"Failed to get ran_on: {err}", raw=True)
+            return format_text_response(
+                _render_resources("Threat Graph Ran-On", response), raw=True
+            )
+        except Exception as e:
+            return format_text_response(f"Failed to get ran_on: {e}", raw=True)
 
     # -------- internal helpers --------
 

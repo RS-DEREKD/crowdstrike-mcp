@@ -317,3 +317,61 @@ class TestThreatGraphGetEdges:
             threatgraph_module.threatgraph_get_edges(ids=["x"], edge_type="bogus")
         )
         assert "threatgraph_get_edge_types" in result or "threatgraph-edge-types" in result
+
+
+class TestThreatGraphGetRanOn:
+    def test_returns_ran_on(self, threatgraph_module):
+        threatgraph_module.falcon.get_ran_on.return_value = {
+            "status_code": 200,
+            "body": {"resources": [{"aid": "host-1", "id": "pid:host-1:123"}]},
+        }
+        result = asyncio.run(
+            threatgraph_module.threatgraph_get_ran_on(
+                value="1.2.3.4", type="ip_address"
+            )
+        )
+        assert "host-1" in result
+
+    def test_passes_args_to_falconpy(self, threatgraph_module):
+        threatgraph_module.falcon.get_ran_on.return_value = {
+            "status_code": 200, "body": {"resources": []},
+        }
+        asyncio.run(
+            threatgraph_module.threatgraph_get_ran_on(
+                value="abc123", type="hash_sha256",
+                scope="customer", limit=50, offset="tok", nano=True,
+            )
+        )
+        kwargs = threatgraph_module.falcon.get_ran_on.call_args.kwargs
+        assert kwargs["value"] == "abc123"
+        assert kwargs["type"] == "hash_sha256"
+        assert kwargs["scope"] == "customer"
+        assert kwargs["limit"] == 50
+        assert kwargs["offset"] == "tok"
+        assert kwargs["nano"] is True
+
+    def test_default_limit_and_scope(self, threatgraph_module):
+        threatgraph_module.falcon.get_ran_on.return_value = {
+            "status_code": 200, "body": {"resources": []},
+        }
+        asyncio.run(
+            threatgraph_module.threatgraph_get_ran_on(value="x", type="domain")
+        )
+        kwargs = threatgraph_module.falcon.get_ran_on.call_args.kwargs
+        assert kwargs["limit"] == 100
+        assert kwargs["scope"] == "device"
+
+    def test_limit_above_1000_rejected(self, threatgraph_module):
+        result = asyncio.run(
+            threatgraph_module.threatgraph_get_ran_on(
+                value="x", type="domain", limit=2000
+            )
+        )
+        assert threatgraph_module.falcon.get_ran_on.call_count == 0
+        assert "1000" in result or "limit" in result.lower()
+
+    def test_requires_value_and_type(self, threatgraph_module):
+        result = asyncio.run(
+            threatgraph_module.threatgraph_get_ran_on(value="", type="domain")
+        )
+        assert "value" in result.lower() or "required" in result.lower()
