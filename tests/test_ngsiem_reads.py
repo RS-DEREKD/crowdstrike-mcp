@@ -24,30 +24,36 @@ class TestCallAndUnwrap:
     """The shared helper used by all 12 new tools."""
 
     def test_success_path_returns_resources(self, ngsiem_module):
-        fake_method = MagicMock(return_value={
-            "status_code": 200,
-            "body": {"resources": [{"id": "a"}, {"id": "b"}]},
-        })
+        fake_method = MagicMock(
+            return_value={
+                "status_code": 200,
+                "body": {"resources": [{"id": "a"}, {"id": "b"}]},
+            }
+        )
         result = ngsiem_module._call_and_unwrap(fake_method, "op_name", filter="x")
         assert result["success"] is True
         assert result["resources"] == [{"id": "a"}, {"id": "b"}]
         fake_method.assert_called_once_with(filter="x")
 
     def test_http_error_surfaces_body_message(self, ngsiem_module):
-        fake_method = MagicMock(return_value={
-            "status_code": 403,
-            "body": {"errors": [{"message": "Forbidden"}]},
-        })
+        fake_method = MagicMock(
+            return_value={
+                "status_code": 403,
+                "body": {"errors": [{"message": "Forbidden"}]},
+            }
+        )
         result = ngsiem_module._call_and_unwrap(fake_method, "op_name")
         assert result["success"] is False
         assert "Forbidden" in result["error"]
         assert "403" in result["error"]
 
     def test_empty_resources_is_success(self, ngsiem_module):
-        fake_method = MagicMock(return_value={
-            "status_code": 200,
-            "body": {"resources": []},
-        })
+        fake_method = MagicMock(
+            return_value={
+                "status_code": 200,
+                "body": {"resources": []},
+            }
+        )
         result = ngsiem_module._call_and_unwrap(fake_method, "op_name")
         assert result["success"] is True
         assert result["resources"] == []
@@ -63,11 +69,12 @@ class TestListSavedQueries:
     def test_returns_compact_projection_by_default(self, ngsiem_module):
         ngsiem_module.falcon.list_saved_queries.return_value = {
             "status_code": 200,
-            "body": {"resources": [
-                {"id": "q1", "name": "enrich_users", "last_modified": "2026-04-01",
-                 "query": "..." * 100, "extra": "ignored"},
-                {"id": "q2", "name": "enrich_hosts", "last_modified": "2026-04-02"},
-            ]},
+            "body": {
+                "resources": [
+                    {"id": "q1", "name": "enrich_users", "last_modified": "2026-04-01", "query": "..." * 100, "extra": "ignored"},
+                    {"id": "q2", "name": "enrich_hosts", "last_modified": "2026-04-02"},
+                ]
+            },
         }
         result = asyncio.run(ngsiem_module.ngsiem_list_saved_queries())
         assert "q1" in result and "enrich_users" in result
@@ -78,16 +85,19 @@ class TestListSavedQueries:
     def test_detail_true_returns_full_records(self, ngsiem_module):
         ngsiem_module.falcon.list_saved_queries.return_value = {
             "status_code": 200,
-            "body": {"resources": [
-                {"id": "q1", "name": "x", "last_modified": "t", "extra": "keep_me"},
-            ]},
+            "body": {
+                "resources": [
+                    {"id": "q1", "name": "x", "last_modified": "t", "extra": "keep_me"},
+                ]
+            },
         }
         result = asyncio.run(ngsiem_module.ngsiem_list_saved_queries(detail=True))
         assert "keep_me" in result
 
     def test_passes_filter_and_limit(self, ngsiem_module):
         ngsiem_module.falcon.list_saved_queries.return_value = {
-            "status_code": 200, "body": {"resources": []},
+            "status_code": 200,
+            "body": {"resources": []},
         }
         asyncio.run(ngsiem_module.ngsiem_list_saved_queries(filter="name:'enrich_*'", limit=25))
         kwargs = ngsiem_module.falcon.list_saved_queries.call_args.kwargs
@@ -96,7 +106,8 @@ class TestListSavedQueries:
 
     def test_caps_limit_at_1000(self, ngsiem_module):
         ngsiem_module.falcon.list_saved_queries.return_value = {
-            "status_code": 200, "body": {"resources": []},
+            "status_code": 200,
+            "body": {"resources": []},
         }
         asyncio.run(ngsiem_module.ngsiem_list_saved_queries(limit=9999))
         kwargs = ngsiem_module.falcon.list_saved_queries.call_args.kwargs
@@ -104,14 +115,16 @@ class TestListSavedQueries:
 
     def test_empty_result_message(self, ngsiem_module):
         ngsiem_module.falcon.list_saved_queries.return_value = {
-            "status_code": 200, "body": {"resources": []},
+            "status_code": 200,
+            "body": {"resources": []},
         }
         result = asyncio.run(ngsiem_module.ngsiem_list_saved_queries())
         assert "no" in result.lower() or "0" in result
 
     def test_handles_api_error(self, ngsiem_module):
         ngsiem_module.falcon.list_saved_queries.return_value = {
-            "status_code": 403, "body": {"errors": [{"message": "Forbidden"}]},
+            "status_code": 403,
+            "body": {"errors": [{"message": "Forbidden"}]},
         }
         result = asyncio.run(ngsiem_module.ngsiem_list_saved_queries())
         assert "failed" in result.lower()
@@ -121,9 +134,11 @@ class TestGetSavedQueryTemplate:
     def test_returns_full_template(self, ngsiem_module):
         ngsiem_module.falcon.get_saved_query_template.return_value = {
             "status_code": 200,
-            "body": {"resources": [
-                {"id": "q1", "name": "enrich_users", "query_string": "#repo=all | ..."},
-            ]},
+            "body": {
+                "resources": [
+                    {"id": "q1", "name": "enrich_users", "query_string": "#repo=all | ..."},
+                ]
+            },
         }
         result = asyncio.run(ngsiem_module.ngsiem_get_saved_query_template(id="q1"))
         assert "q1" in result
@@ -132,7 +147,8 @@ class TestGetSavedQueryTemplate:
 
     def test_passes_id(self, ngsiem_module):
         ngsiem_module.falcon.get_saved_query_template.return_value = {
-            "status_code": 200, "body": {"resources": []},
+            "status_code": 200,
+            "body": {"resources": []},
         }
         asyncio.run(ngsiem_module.ngsiem_get_saved_query_template(id="abc"))
         kwargs = ngsiem_module.falcon.get_saved_query_template.call_args.kwargs
@@ -140,7 +156,8 @@ class TestGetSavedQueryTemplate:
 
     def test_handles_api_error(self, ngsiem_module):
         ngsiem_module.falcon.get_saved_query_template.return_value = {
-            "status_code": 404, "body": {"errors": [{"message": "Not found"}]},
+            "status_code": 404,
+            "body": {"errors": [{"message": "Not found"}]},
         }
         result = asyncio.run(ngsiem_module.ngsiem_get_saved_query_template(id="missing"))
         assert "failed" in result.lower()
@@ -150,10 +167,11 @@ class TestListLookupFiles:
     def test_returns_compact_projection(self, ngsiem_module):
         ngsiem_module.falcon.list_lookup_files.return_value = {
             "status_code": 200,
-            "body": {"resources": [
-                {"id": "l1", "name": "blocked_domains.csv", "last_modified": "t1",
-                 "row_count": 400, "schema": "..." * 20},
-            ]},
+            "body": {
+                "resources": [
+                    {"id": "l1", "name": "blocked_domains.csv", "last_modified": "t1", "row_count": 400, "schema": "..." * 20},
+                ]
+            },
         }
         result = asyncio.run(ngsiem_module.ngsiem_list_lookup_files())
         assert "l1" in result and "blocked_domains.csv" in result
@@ -162,9 +180,11 @@ class TestListLookupFiles:
     def test_detail_true_returns_full(self, ngsiem_module):
         ngsiem_module.falcon.list_lookup_files.return_value = {
             "status_code": 200,
-            "body": {"resources": [
-                {"id": "l1", "name": "x", "row_count": 42},
-            ]},
+            "body": {
+                "resources": [
+                    {"id": "l1", "name": "x", "row_count": 42},
+                ]
+            },
         }
         result = asyncio.run(ngsiem_module.ngsiem_list_lookup_files(detail=True))
         assert "row_count" in result
@@ -172,7 +192,8 @@ class TestListLookupFiles:
 
     def test_caps_limit(self, ngsiem_module):
         ngsiem_module.falcon.list_lookup_files.return_value = {
-            "status_code": 200, "body": {"resources": []},
+            "status_code": 200,
+            "body": {"resources": []},
         }
         asyncio.run(ngsiem_module.ngsiem_list_lookup_files(limit=9999))
         assert ngsiem_module.falcon.list_lookup_files.call_args.kwargs["limit"] == 1000
@@ -190,7 +211,8 @@ class TestGetLookupFile:
 
     def test_metadata_only_by_default(self, ngsiem_module):
         ngsiem_module.falcon.get_lookup_file.return_value = {
-            "status_code": 200, "body": {"resources": [self.FULL_RECORD]},
+            "status_code": 200,
+            "body": {"resources": [self.FULL_RECORD]},
         }
         result = asyncio.run(ngsiem_module.ngsiem_get_lookup_file(id="l1"))
         assert "blocked_domains.csv" in result
@@ -200,17 +222,17 @@ class TestGetLookupFile:
 
     def test_include_content_true_returns_content(self, ngsiem_module):
         ngsiem_module.falcon.get_lookup_file.return_value = {
-            "status_code": 200, "body": {"resources": [self.FULL_RECORD]},
+            "status_code": 200,
+            "body": {"resources": [self.FULL_RECORD]},
         }
-        result = asyncio.run(
-            ngsiem_module.ngsiem_get_lookup_file(id="l1", include_content=True)
-        )
+        result = asyncio.run(ngsiem_module.ngsiem_get_lookup_file(id="l1", include_content=True))
         assert "foo.example" in result
         assert "bar.example" in result
 
     def test_passes_id(self, ngsiem_module):
         ngsiem_module.falcon.get_lookup_file.return_value = {
-            "status_code": 200, "body": {"resources": []},
+            "status_code": 200,
+            "body": {"resources": []},
         }
         asyncio.run(ngsiem_module.ngsiem_get_lookup_file(id="abc"))
         kwargs = ngsiem_module.falcon.get_lookup_file.call_args.kwargs
@@ -218,7 +240,8 @@ class TestGetLookupFile:
 
     def test_handles_api_error(self, ngsiem_module):
         ngsiem_module.falcon.get_lookup_file.return_value = {
-            "status_code": 404, "body": {"errors": [{"message": "Not found"}]},
+            "status_code": 404,
+            "body": {"errors": [{"message": "Not found"}]},
         }
         result = asyncio.run(ngsiem_module.ngsiem_get_lookup_file(id="missing"))
         assert "failed" in result.lower()
@@ -228,10 +251,11 @@ class TestListDashboards:
     def test_compact_projection(self, ngsiem_module):
         ngsiem_module.falcon.list_dashboards.return_value = {
             "status_code": 200,
-            "body": {"resources": [
-                {"id": "d1", "name": "Ingestion Overview", "last_modified": "t1",
-                 "widgets": ["..." * 50]},
-            ]},
+            "body": {
+                "resources": [
+                    {"id": "d1", "name": "Ingestion Overview", "last_modified": "t1", "widgets": ["..." * 50]},
+                ]
+            },
         }
         result = asyncio.run(ngsiem_module.ngsiem_list_dashboards())
         assert "Ingestion Overview" in result
@@ -239,7 +263,8 @@ class TestListDashboards:
 
     def test_handles_api_error(self, ngsiem_module):
         ngsiem_module.falcon.list_dashboards.return_value = {
-            "status_code": 500, "body": {"errors": [{"message": "boom"}]},
+            "status_code": 500,
+            "body": {"errors": [{"message": "boom"}]},
         }
         result = asyncio.run(ngsiem_module.ngsiem_list_dashboards())
         assert "failed" in result.lower()
@@ -249,10 +274,11 @@ class TestListParsers:
     def test_compact_projection(self, ngsiem_module):
         ngsiem_module.falcon.list_parsers.return_value = {
             "status_code": 200,
-            "body": {"resources": [
-                {"id": "p1", "name": "box-parser", "last_modified": "t",
-                 "script": "#" * 1000},
-            ]},
+            "body": {
+                "resources": [
+                    {"id": "p1", "name": "box-parser", "last_modified": "t", "script": "#" * 1000},
+                ]
+            },
         }
         result = asyncio.run(ngsiem_module.ngsiem_list_parsers())
         assert "box-parser" in result
@@ -261,9 +287,11 @@ class TestListParsers:
     def test_detail_true_returns_script(self, ngsiem_module):
         ngsiem_module.falcon.list_parsers.return_value = {
             "status_code": 200,
-            "body": {"resources": [
-                {"id": "p1", "name": "box-parser", "script": "MARKER_STRING"},
-            ]},
+            "body": {
+                "resources": [
+                    {"id": "p1", "name": "box-parser", "script": "MARKER_STRING"},
+                ]
+            },
         }
         result = asyncio.run(ngsiem_module.ngsiem_list_parsers(detail=True))
         assert "MARKER_STRING" in result
@@ -273,9 +301,11 @@ class TestGetParser:
     def test_returns_parser_detail(self, ngsiem_module):
         ngsiem_module.falcon.get_parser.return_value = {
             "status_code": 200,
-            "body": {"resources": [
-                {"id": "p1", "name": "box-parser", "script": "MARKER_STRING"},
-            ]},
+            "body": {
+                "resources": [
+                    {"id": "p1", "name": "box-parser", "script": "MARKER_STRING"},
+                ]
+            },
         }
         result = asyncio.run(ngsiem_module.ngsiem_get_parser(id="p1"))
         assert "p1" in result
@@ -283,7 +313,8 @@ class TestGetParser:
 
     def test_passes_id(self, ngsiem_module):
         ngsiem_module.falcon.get_parser.return_value = {
-            "status_code": 200, "body": {"resources": []},
+            "status_code": 200,
+            "body": {"resources": []},
         }
         asyncio.run(ngsiem_module.ngsiem_get_parser(id="p1"))
         kwargs = ngsiem_module.falcon.get_parser.call_args.kwargs
@@ -291,7 +322,8 @@ class TestGetParser:
 
     def test_handles_api_error(self, ngsiem_module):
         ngsiem_module.falcon.get_parser.return_value = {
-            "status_code": 404, "body": {"errors": [{"message": "Not found"}]},
+            "status_code": 404,
+            "body": {"errors": [{"message": "Not found"}]},
         }
         result = asyncio.run(ngsiem_module.ngsiem_get_parser(id="missing"))
         assert "failed" in result.lower()
@@ -301,11 +333,12 @@ class TestListDataConnections:
     def test_compact_projection_with_state(self, ngsiem_module):
         ngsiem_module.falcon.list_data_connections.return_value = {
             "status_code": 200,
-            "body": {"resources": [
-                {"id": "c1", "name": "box-prod", "state": "active",
-                 "last_modified": "t1", "config_blob": "..." * 100},
-                {"id": "c2", "name": "cato-prod", "state": "failed"},
-            ]},
+            "body": {
+                "resources": [
+                    {"id": "c1", "name": "box-prod", "state": "active", "last_modified": "t1", "config_blob": "..." * 100},
+                    {"id": "c2", "name": "cato-prod", "state": "failed"},
+                ]
+            },
         }
         result = asyncio.run(ngsiem_module.ngsiem_list_data_connections())
         assert "box-prod" in result and "active" in result
@@ -314,7 +347,8 @@ class TestListDataConnections:
 
     def test_passes_filter(self, ngsiem_module):
         ngsiem_module.falcon.list_data_connections.return_value = {
-            "status_code": 200, "body": {"resources": []},
+            "status_code": 200,
+            "body": {"resources": []},
         }
         asyncio.run(ngsiem_module.ngsiem_list_data_connections(filter="state:'failed'"))
         kwargs = ngsiem_module.falcon.list_data_connections.call_args.kwargs
@@ -322,7 +356,8 @@ class TestListDataConnections:
 
     def test_handles_api_error(self, ngsiem_module):
         ngsiem_module.falcon.list_data_connections.return_value = {
-            "status_code": 403, "body": {"errors": [{"message": "Forbidden"}]},
+            "status_code": 403,
+            "body": {"errors": [{"message": "Forbidden"}]},
         }
         result = asyncio.run(ngsiem_module.ngsiem_list_data_connections())
         assert "failed" in result.lower()
@@ -332,9 +367,11 @@ class TestGetDataConnection:
     def test_returns_connection_detail(self, ngsiem_module):
         ngsiem_module.falcon.get_connection_by_id.return_value = {
             "status_code": 200,
-            "body": {"resources": [
-                {"id": "c1", "name": "box-prod", "state": "active", "config": {"endpoint": "https://x"}},
-            ]},
+            "body": {
+                "resources": [
+                    {"id": "c1", "name": "box-prod", "state": "active", "config": {"endpoint": "https://x"}},
+                ]
+            },
         }
         result = asyncio.run(ngsiem_module.ngsiem_get_data_connection(id="c1"))
         assert "box-prod" in result
@@ -342,7 +379,8 @@ class TestGetDataConnection:
 
     def test_passes_id(self, ngsiem_module):
         ngsiem_module.falcon.get_connection_by_id.return_value = {
-            "status_code": 200, "body": {"resources": []},
+            "status_code": 200,
+            "body": {"resources": []},
         }
         asyncio.run(ngsiem_module.ngsiem_get_data_connection(id="c1"))
         kwargs = ngsiem_module.falcon.get_connection_by_id.call_args.kwargs
@@ -361,7 +399,8 @@ class TestGetProvisioningStatus:
 
     def test_handles_api_error(self, ngsiem_module):
         ngsiem_module.falcon.get_provisioning_status.return_value = {
-            "status_code": 500, "body": {"errors": [{"message": "boom"}]},
+            "status_code": 500,
+            "body": {"errors": [{"message": "boom"}]},
         }
         result = asyncio.run(ngsiem_module.ngsiem_get_provisioning_status())
         assert "failed" in result.lower()
@@ -371,10 +410,12 @@ class TestListDataConnectors:
     def test_returns_connector_types(self, ngsiem_module):
         ngsiem_module.falcon.list_data_connectors.return_value = {
             "status_code": 200,
-            "body": {"resources": [
-                {"id": "box", "name": "Box", "description": "Box cloud storage"},
-                {"id": "cato", "name": "Cato", "description": "Cato SASE"},
-            ]},
+            "body": {
+                "resources": [
+                    {"id": "box", "name": "Box", "description": "Box cloud storage"},
+                    {"id": "cato", "name": "Cato", "description": "Cato SASE"},
+                ]
+            },
         }
         result = asyncio.run(ngsiem_module.ngsiem_list_data_connectors())
         assert "Box" in result and "Cato" in result
@@ -384,7 +425,8 @@ class TestListDataConnectors:
 
     def test_handles_api_error(self, ngsiem_module):
         ngsiem_module.falcon.list_data_connectors.return_value = {
-            "status_code": 403, "body": {"errors": [{"message": "Forbidden"}]},
+            "status_code": 403,
+            "body": {"errors": [{"message": "Forbidden"}]},
         }
         result = asyncio.run(ngsiem_module.ngsiem_list_data_connectors())
         assert "failed" in result.lower()
@@ -394,10 +436,11 @@ class TestListConnectorConfigs:
     def test_compact_projection(self, ngsiem_module):
         ngsiem_module.falcon.list_connector_configs.return_value = {
             "status_code": 200,
-            "body": {"resources": [
-                {"id": "cfg1", "name": "box-cfg", "last_modified": "t",
-                 "big_blob": "..." * 100},
-            ]},
+            "body": {
+                "resources": [
+                    {"id": "cfg1", "name": "box-cfg", "last_modified": "t", "big_blob": "..." * 100},
+                ]
+            },
         }
         result = asyncio.run(ngsiem_module.ngsiem_list_connector_configs())
         assert "box-cfg" in result
@@ -405,7 +448,8 @@ class TestListConnectorConfigs:
 
     def test_handles_api_error(self, ngsiem_module):
         ngsiem_module.falcon.list_connector_configs.return_value = {
-            "status_code": 403, "body": {"errors": [{"message": "Forbidden"}]},
+            "status_code": 403,
+            "body": {"errors": [{"message": "Forbidden"}]},
         }
         result = asyncio.run(ngsiem_module.ngsiem_list_connector_configs())
         assert "failed" in result.lower()

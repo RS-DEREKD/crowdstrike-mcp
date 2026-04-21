@@ -509,9 +509,7 @@ class NGSIEMModule(BaseModule):
     ) -> str:
         """Fetch the live body + metadata of one saved NGSIEM search."""
         falcon = self._service(NGSIEM)
-        result = self._call_and_unwrap(
-            falcon.get_saved_query_template, "get_saved_query_template", ids=id
-        )
+        result = self._call_and_unwrap(falcon.get_saved_query_template, "get_saved_query_template", ids=id)
         return self._format_single(
             result,
             tool_name="ngsiem_get_saved_query_template",
@@ -635,9 +633,7 @@ class NGSIEMModule(BaseModule):
         kwargs: dict = {"limit": limit}
         if filter:
             kwargs["filter"] = filter
-        result = self._call_and_unwrap(
-            falcon.list_data_connections, "list_data_connections", **kwargs
-        )
+        result = self._call_and_unwrap(falcon.list_data_connections, "list_data_connections", **kwargs)
         return self._format_list(
             result,
             tool_name="ngsiem_list_data_connections",
@@ -653,9 +649,7 @@ class NGSIEMModule(BaseModule):
     ) -> str:
         """Fetch a single data connection's state + configuration."""
         falcon = self._service(NGSIEM)
-        result = self._call_and_unwrap(
-            falcon.get_connection_by_id, "get_connection_by_id", ids=id
-        )
+        result = self._call_and_unwrap(falcon.get_connection_by_id, "get_connection_by_id", ids=id)
         return self._format_single(
             result,
             tool_name="ngsiem_get_data_connection",
@@ -666,9 +660,7 @@ class NGSIEMModule(BaseModule):
     async def ngsiem_get_provisioning_status(self) -> str:
         """Fetch overall NGSIEM ingestion provisioning / health status."""
         falcon = self._service(NGSIEM)
-        result = self._call_and_unwrap(
-            falcon.get_provisioning_status, "get_provisioning_status"
-        )
+        result = self._call_and_unwrap(falcon.get_provisioning_status, "get_provisioning_status")
         return self._format_single(
             result,
             tool_name="ngsiem_get_provisioning_status",
@@ -679,9 +671,7 @@ class NGSIEMModule(BaseModule):
     async def ngsiem_list_data_connectors(self) -> str:
         """Enumerate available NGSIEM data connector types."""
         falcon = self._service(NGSIEM)
-        result = self._call_and_unwrap(
-            falcon.list_data_connectors, "list_data_connectors"
-        )
+        result = self._call_and_unwrap(falcon.list_data_connectors, "list_data_connectors")
         return self._format_list(
             result,
             tool_name="ngsiem_list_data_connectors",
@@ -703,9 +693,7 @@ class NGSIEMModule(BaseModule):
         kwargs: dict = {"limit": limit}
         if filter:
             kwargs["filter"] = filter
-        result = self._call_and_unwrap(
-            falcon.list_connector_configs, "list_connector_configs", **kwargs
-        )
+        result = self._call_and_unwrap(falcon.list_connector_configs, "list_connector_configs", **kwargs)
         return self._format_list(
             result,
             tool_name="ngsiem_list_connector_configs",
