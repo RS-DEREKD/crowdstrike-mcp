@@ -39,8 +39,13 @@ VALID_INVESTIGATION_TYPES = {
     "relationship_analysis",
 }
 VALID_TIMELINE_EVENT_TYPES = {
-    "ACTIVITY", "NOTIFICATION", "THREAT",
-    "ENTITY", "AUDIT", "POLICY", "SYSTEM",
+    "ACTIVITY",
+    "NOTIFICATION",
+    "THREAT",
+    "ENTITY",
+    "AUDIT",
+    "POLICY",
+    "SYSTEM",
 }
 
 
@@ -50,10 +55,7 @@ class IDPModule(BaseModule):
     def __init__(self, client):
         super().__init__(client)
         if not IDENTITY_PROTECTION_AVAILABLE:
-            raise ImportError(
-                "IdentityProtection service class not available. "
-                "Ensure crowdstrike-falconpy >= 1.6.1 is installed."
-            )
+            raise ImportError("IdentityProtection service class not available. Ensure crowdstrike-falconpy >= 1.6.1 is installed.")
         self._log("Initialized")
 
     def register_tools(self, server: FastMCP) -> None:
@@ -101,10 +103,7 @@ class IDPModule(BaseModule):
         # GraphQL-level errors can arrive on HTTP 200. Treat non-empty errors[] as failure.
         gql_errors = body.get("errors")
         if isinstance(gql_errors, list) and gql_errors:
-            msgs = [
-                e.get("message", str(e)) if isinstance(e, dict) else str(e)
-                for e in gql_errors
-            ]
+            msgs = [e.get("message", str(e)) if isinstance(e, dict) else str(e) for e in gql_errors]
             return {"success": False, "error": f"{context}: GraphQL error: {'; '.join(msgs)}"}
 
         return {"success": True, "data": body.get("data", {}) or {}}
@@ -224,8 +223,12 @@ class IDPModule(BaseModule):
     ) -> str:
         ids_json = json.dumps(entity_ids)
         fields = [
-            "entityId", "primaryDisplayName", "secondaryDisplayName",
-            "type", "riskScore", "riskScoreSeverity",
+            "entityId",
+            "primaryDisplayName",
+            "secondaryDisplayName",
+            "type",
+            "riskScore",
+            "riskScoreSeverity",
         ]
         if include_risk_factors:
             fields.append("riskFactors { type severity }")
@@ -282,9 +285,7 @@ class IDPModule(BaseModule):
         }}
         """
 
-    def _get_entity_details_batch(
-        self, entity_ids: list[str], options: dict[str, Any]
-    ) -> dict[str, Any]:
+    def _get_entity_details_batch(self, entity_ids: list[str], options: dict[str, Any]) -> dict[str, Any]:
         query = self._build_entity_details_query(
             entity_ids=entity_ids,
             include_risk_factors=True,
@@ -333,7 +334,8 @@ class IDPModule(BaseModule):
                 "riskScoreSeverity": n.get("riskScoreSeverity", "LOW"),
                 "riskFactors": n.get("riskFactors", []) if isinstance(n.get("riskFactors"), list) else [],
             }
-            for n in nodes if isinstance(n, dict)
+            for n in nodes
+            if isinstance(n, dict)
         ]
         return {"risk_assessments": assessments, "entity_count": len(assessments)}
 
@@ -404,9 +406,12 @@ class IDPModule(BaseModule):
     """
 
     def _build_timeline_query(
-        self, entity_id: str,
-        start_time: str | None, end_time: str | None,
-        event_types: list[str] | None, limit: int,
+        self,
+        entity_id: str,
+        start_time: str | None,
+        end_time: str | None,
+        event_types: list[str] | None,
+        limit: int,
     ) -> str:
         filters = [f'sourceEntityQuery: {{entityIds: ["{entity_id}"]}}']
         if isinstance(start_time, str) and start_time:
@@ -427,9 +432,7 @@ class IDPModule(BaseModule):
         }}
         """
 
-    def _get_entity_timelines_batch(
-        self, entity_ids: list[str], options: dict[str, Any]
-    ) -> dict[str, Any]:
+    def _get_entity_timelines_batch(self, entity_ids: list[str], options: dict[str, Any]) -> dict[str, Any]:
         timelines = []
         for eid in entity_ids:
             query = self._build_timeline_query(
@@ -443,19 +446,19 @@ class IDPModule(BaseModule):
             if not result.get("success"):
                 return {"error": result["error"]}
             tl = result["data"].get("timeline", {}) or {}
-            timelines.append({
-                "entity_id": eid,
-                "timeline": tl.get("nodes", []) if isinstance(tl.get("nodes"), list) else [],
-                "page_info": tl.get("pageInfo", {}) if isinstance(tl.get("pageInfo"), dict) else {},
-            })
+            timelines.append(
+                {
+                    "entity_id": eid,
+                    "timeline": tl.get("nodes", []) if isinstance(tl.get("nodes"), list) else [],
+                    "page_info": tl.get("pageInfo", {}) if isinstance(tl.get("pageInfo"), dict) else {},
+                }
+            )
         return {"timelines": timelines, "entity_count": len(entity_ids)}
 
     # --------------------------------------------------
     # relationship_analysis
     # --------------------------------------------------
-    def _build_relationship_query(
-        self, entity_id: str, depth: int, include_risk_context: bool, limit: int
-    ) -> str:
+    def _build_relationship_query(self, entity_id: str, depth: int, include_risk_context: bool, limit: int) -> str:
         risk_fields = ""
         if include_risk_context:
             risk_fields = """
@@ -505,9 +508,7 @@ class IDPModule(BaseModule):
         }}
         """
 
-    def _analyze_relationships_batch(
-        self, entity_ids: list[str], options: dict[str, Any]
-    ) -> dict[str, Any]:
+    def _analyze_relationships_batch(self, entity_ids: list[str], options: dict[str, Any]) -> dict[str, Any]:
         relationships = []
         depth = options.get("relationship_depth", 2)
         for eid in entity_ids:
@@ -527,11 +528,13 @@ class IDPModule(BaseModule):
                     associations = []
             else:
                 associations = []
-            relationships.append({
-                "entity_id": eid,
-                "associations": associations,
-                "relationship_count": len(associations),
-            })
+            relationships.append(
+                {
+                    "entity_id": eid,
+                    "associations": associations,
+                    "relationship_count": len(associations),
+                }
+            )
         return {"relationships": relationships, "entity_count": len(entity_ids)}
 
     # --------------------------------------------------
@@ -546,58 +549,53 @@ class IDPModule(BaseModule):
         limit: int,
     ) -> str | None:
         if not any(identifier_lists):
-            return (
-                "At least one entity identifier must be provided "
-                "(username, entity_ids, entity_names, email_addresses, ip_addresses, or domain_names)."
-            )
+            return "At least one entity identifier must be provided (username, entity_ids, entity_names, email_addresses, ip_addresses, or domain_names)."
         if not investigation_types:
-            return (
-                "investigation_types cannot be empty. Provide any subset of: "
-                f"{sorted(VALID_INVESTIGATION_TYPES)}."
-            )
+            return f"investigation_types cannot be empty. Provide any subset of: {sorted(VALID_INVESTIGATION_TYPES)}."
         bad_inv = [t for t in investigation_types if t not in VALID_INVESTIGATION_TYPES]
         if bad_inv:
-            return (
-                f"Invalid investigation_types: {bad_inv}. "
-                f"Valid values: {sorted(VALID_INVESTIGATION_TYPES)}."
-            )
+            return f"Invalid investigation_types: {bad_inv}. Valid values: {sorted(VALID_INVESTIGATION_TYPES)}."
         if timeline_event_types:
             bad_ev = [t for t in timeline_event_types if t not in VALID_TIMELINE_EVENT_TYPES]
             if bad_ev:
-                return (
-                    f"Invalid timeline_event_types: {bad_ev}. "
-                    f"Valid values: {sorted(VALID_TIMELINE_EVENT_TYPES)}."
-                )
+                return f"Invalid timeline_event_types: {bad_ev}. Valid values: {sorted(VALID_TIMELINE_EVENT_TYPES)}."
         if not 1 <= relationship_depth <= 3:
             return f"relationship_depth must be between 1 and 3 (got {relationship_depth})."
         if not 1 <= limit <= 200:
             return f"limit must be between 1 and 200 (got {limit})."
         return None
 
-    def _execute_investigation(
-        self, inv_type: str, entity_ids: list[str], params: dict[str, Any]
-    ) -> dict[str, Any]:
+    def _execute_investigation(self, inv_type: str, entity_ids: list[str], params: dict[str, Any]) -> dict[str, Any]:
         if inv_type == "entity_details":
-            return self._get_entity_details_batch(entity_ids, {
-                "include_associations": params["include_associations"],
-                "include_accounts": params["include_accounts"],
-                "include_incidents": params["include_incidents"],
-            })
+            return self._get_entity_details_batch(
+                entity_ids,
+                {
+                    "include_associations": params["include_associations"],
+                    "include_accounts": params["include_accounts"],
+                    "include_incidents": params["include_incidents"],
+                },
+            )
         if inv_type == "risk_assessment":
             return self._assess_risks_batch(entity_ids, {"include_risk_factors": True})
         if inv_type == "timeline_analysis":
-            return self._get_entity_timelines_batch(entity_ids, {
-                "start_time": params.get("timeline_start_time"),
-                "end_time": params.get("timeline_end_time"),
-                "event_types": params.get("timeline_event_types"),
-                "limit": params["limit"],
-            })
+            return self._get_entity_timelines_batch(
+                entity_ids,
+                {
+                    "start_time": params.get("timeline_start_time"),
+                    "end_time": params.get("timeline_end_time"),
+                    "event_types": params.get("timeline_event_types"),
+                    "limit": params["limit"],
+                },
+            )
         if inv_type == "relationship_analysis":
-            return self._analyze_relationships_batch(entity_ids, {
-                "relationship_depth": params["relationship_depth"],
-                "include_risk_context": True,
-                "limit": params["limit"],
-            })
+            return self._analyze_relationships_batch(
+                entity_ids,
+                {
+                    "relationship_depth": params["relationship_depth"],
+                    "include_risk_context": True,
+                    "limit": params["limit"],
+                },
+            )
         return {"error": f"Unknown investigation type: {inv_type}"}
 
     def _format_investigation_response(
@@ -675,39 +673,40 @@ class IDPModule(BaseModule):
         if include_raw:
             lines.append("## Raw GraphQL results")
             lines.append("```json")
-            lines.append(json.dumps({
-                "entity_ids": entity_ids,
-                "investigations": investigation_results,
-            }, indent=2, default=str))
+            lines.append(
+                json.dumps(
+                    {
+                        "entity_ids": entity_ids,
+                        "investigations": investigation_results,
+                    },
+                    indent=2,
+                    default=str,
+                )
+            )
             lines.append("```")
 
         return "\n".join(lines)
 
     async def identity_investigate_entity(
         self,
-        username: Annotated[Optional[str],
-            "Ergonomic shortcut: single username/display name. Merged into entity_names."] = None,
-        quick_triage: Annotated[bool,
+        username: Annotated[Optional[str], "Ergonomic shortcut: single username/display name. Merged into entity_names."] = None,
+        quick_triage: Annotated[
+            bool,
             "One-shot triage mode: forces investigation_types=[entity_details, risk_assessment] "
             "with lean includes (no associations/accounts/incidents, limit=5). Good default for "
-            "'does Falcon consider this user compromised?'."] = False,
-        entity_ids: Annotated[Optional[list[str]],
-            "Direct entity IDs to investigate (skip identifier resolution)."] = None,
-        entity_names: Annotated[Optional[list[str]],
-            "Entity display names (e.g. ['Administrator']). AND-combined with other identifier kinds."] = None,
-        email_addresses: Annotated[Optional[list[str]],
-            "Email addresses (restricts search to USER entities)."] = None,
-        ip_addresses: Annotated[Optional[list[str]],
-            "IP addresses (restricts search to ENDPOINT entities). Ignored if email_addresses given."] = None,
-        domain_names: Annotated[Optional[list[str]],
-            "Domain names (e.g. ['CORP.LOCAL'])."] = None,
-        investigation_types: Annotated[list[str],
-            "Any subset of: entity_details, risk_assessment, timeline_analysis, relationship_analysis."
-        ] = None,
+            "'does Falcon consider this user compromised?'.",
+        ] = False,
+        entity_ids: Annotated[Optional[list[str]], "Direct entity IDs to investigate (skip identifier resolution)."] = None,
+        entity_names: Annotated[Optional[list[str]], "Entity display names (e.g. ['Administrator']). AND-combined with other identifier kinds."] = None,
+        email_addresses: Annotated[Optional[list[str]], "Email addresses (restricts search to USER entities)."] = None,
+        ip_addresses: Annotated[Optional[list[str]], "IP addresses (restricts search to ENDPOINT entities). Ignored if email_addresses given."] = None,
+        domain_names: Annotated[Optional[list[str]], "Domain names (e.g. ['CORP.LOCAL'])."] = None,
+        investigation_types: Annotated[list[str], "Any subset of: entity_details, risk_assessment, timeline_analysis, relationship_analysis."] = None,
         timeline_start_time: Annotated[Optional[str], "ISO-8601 timestamp (timeline_analysis only)."] = None,
         timeline_end_time: Annotated[Optional[str], "ISO-8601 timestamp (timeline_analysis only)."] = None,
-        timeline_event_types: Annotated[Optional[list[str]],
-            "Filter timeline categories: ACTIVITY, NOTIFICATION, THREAT, ENTITY, AUDIT, POLICY, SYSTEM."] = None,
+        timeline_event_types: Annotated[
+            Optional[list[str]], "Filter timeline categories: ACTIVITY, NOTIFICATION, THREAT, ENTITY, AUDIT, POLICY, SYSTEM."
+        ] = None,
         relationship_depth: Annotated[int, "Relationship nesting depth 1-3 (relationship_analysis only)."] = 2,
         limit: Annotated[int, "Max results per query (1-200)."] = 10,
         include_associations: Annotated[bool, "Include entity associations in details."] = True,
@@ -747,14 +746,16 @@ class IDPModule(BaseModule):
         if validation_err:
             return format_text_response(f"Failed: {validation_err}", raw=True)
 
-        resolved = self._resolve_entities({
-            "entity_ids": entity_ids,
-            "entity_names": entity_names,
-            "email_addresses": email_addresses,
-            "ip_addresses": ip_addresses,
-            "domain_names": domain_names,
-            "limit": limit,
-        })
+        resolved = self._resolve_entities(
+            {
+                "entity_ids": entity_ids,
+                "entity_names": entity_names,
+                "email_addresses": email_addresses,
+                "ip_addresses": ip_addresses,
+                "domain_names": domain_names,
+                "limit": limit,
+            }
+        )
         if isinstance(resolved, dict) and "error" in resolved:
             return format_text_response(f"Failed to resolve entities: {resolved['error']}", raw=True)
         if not resolved:
@@ -785,8 +786,6 @@ class IDPModule(BaseModule):
             investigation_results[inv_type] = res
 
         return format_text_response(
-            self._format_investigation_response(
-                resolved, investigation_results, investigation_types, include_raw
-            ),
+            self._format_investigation_response(resolved, investigation_results, investigation_types, include_raw),
             raw=True,
         )

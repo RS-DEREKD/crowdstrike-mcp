@@ -25,6 +25,7 @@ class TestIdentityProtectionScopes:
 
     def test_post_graphql_requires_all_five_scopes(self):
         from crowdstrike_mcp.common.api_scopes import get_required_scopes
+
         scopes = get_required_scopes("post_graphql")
         assert "identity-protection-assessment:read" in scopes
         assert "identity-protection-detections:read" in scopes
@@ -91,9 +92,7 @@ class TestResolveEntities:
     """_resolve_entities builds correct GraphQL and returns entity ids."""
 
     def test_entity_ids_passthrough(self, idp_module):
-        result = idp_module._resolve_entities(
-            {"entity_ids": ["e1", "e2"], "limit": 10}
-        )
+        result = idp_module._resolve_entities({"entity_ids": ["e1", "e2"], "limit": 10})
         assert isinstance(result, list)
         assert set(result) == {"e1", "e2"}
         # No GraphQL call needed when only entity_ids are given
@@ -104,14 +103,12 @@ class TestResolveEntities:
             "status_code": 200,
             "body": {"data": {"entities": {"nodes": [{"entityId": "e-resolved"}]}}},
         }
-        result = idp_module._resolve_entities(
-            {"entity_names": ["Administrator"], "limit": 10}
-        )
+        result = idp_module._resolve_entities({"entity_names": ["Administrator"], "limit": 10})
         assert result == ["e-resolved"]
         call = idp_module.falcon.graphql.call_args
         query = call.kwargs["body"]["query"]
         # AND of primaryDisplayNames filter present
-        assert 'primaryDisplayNames:' in query
+        assert "primaryDisplayNames:" in query
         assert '"Administrator"' in query
 
     def test_email_addresses_forces_user_type(self, idp_module):
@@ -119,23 +116,19 @@ class TestResolveEntities:
             "status_code": 200,
             "body": {"data": {"entities": {"nodes": []}}},
         }
-        idp_module._resolve_entities(
-            {"email_addresses": ["alice@corp.local"], "limit": 10}
-        )
+        idp_module._resolve_entities({"email_addresses": ["alice@corp.local"], "limit": 10})
         query = idp_module.falcon.graphql.call_args.kwargs["body"]["query"]
-        assert 'secondaryDisplayNames:' in query
-        assert 'types: [USER]' in query
+        assert "secondaryDisplayNames:" in query
+        assert "types: [USER]" in query
 
     def test_ip_addresses_forces_endpoint_type(self, idp_module):
         idp_module.falcon.graphql.return_value = {
             "status_code": 200,
             "body": {"data": {"entities": {"nodes": []}}},
         }
-        idp_module._resolve_entities(
-            {"ip_addresses": ["10.0.0.5"], "limit": 10}
-        )
+        idp_module._resolve_entities({"ip_addresses": ["10.0.0.5"], "limit": 10})
         query = idp_module.falcon.graphql.call_args.kwargs["body"]["query"]
-        assert 'types: [ENDPOINT]' in query
+        assert "types: [ENDPOINT]" in query
         assert '"10.0.0.5"' in query
 
     def test_user_criteria_wins_on_user_endpoint_conflict(self, idp_module):
@@ -152,8 +145,8 @@ class TestResolveEntities:
             }
         )
         query = idp_module.falcon.graphql.call_args.kwargs["body"]["query"]
-        assert 'types: [USER]' in query
-        assert 'types: [ENDPOINT]' not in query
+        assert "types: [USER]" in query
+        assert "types: [ENDPOINT]" not in query
         assert '"10.0.0.5"' not in query
 
     def test_domain_filter_adds_accounts_field(self, idp_module):
@@ -161,24 +154,18 @@ class TestResolveEntities:
             "status_code": 200,
             "body": {"data": {"entities": {"nodes": []}}},
         }
-        idp_module._resolve_entities(
-            {"domain_names": ["CORP.LOCAL"], "limit": 10}
-        )
+        idp_module._resolve_entities({"domain_names": ["CORP.LOCAL"], "limit": 10})
         query = idp_module.falcon.graphql.call_args.kwargs["body"]["query"]
-        assert 'domains:' in query
+        assert "domains:" in query
         assert '"CORP.LOCAL"' in query
-        assert 'ActiveDirectoryAccountDescriptor' in query
+        assert "ActiveDirectoryAccountDescriptor" in query
 
     def test_returns_unique_ids(self, idp_module):
         idp_module.falcon.graphql.return_value = {
             "status_code": 200,
-            "body": {"data": {"entities": {"nodes": [
-                {"entityId": "dup"}, {"entityId": "dup"}, {"entityId": "uniq"}
-            ]}}},
+            "body": {"data": {"entities": {"nodes": [{"entityId": "dup"}, {"entityId": "dup"}, {"entityId": "uniq"}]}}},
         }
-        result = idp_module._resolve_entities(
-            {"entity_ids": ["dup"], "entity_names": ["X"], "limit": 10}
-        )
+        result = idp_module._resolve_entities({"entity_ids": ["dup"], "entity_names": ["X"], "limit": 10})
         assert sorted(result) == ["dup", "uniq"]
 
     def test_graphql_error_bubbles_up_as_dict(self, idp_module):
@@ -186,9 +173,7 @@ class TestResolveEntities:
             "status_code": 403,
             "body": {"errors": [{"message": "Forbidden"}]},
         }
-        result = idp_module._resolve_entities(
-            {"entity_names": ["Admin"], "limit": 10}
-        )
+        result = idp_module._resolve_entities({"entity_names": ["Admin"], "limit": 10})
         assert isinstance(result, dict)
         assert "error" in result
         assert "HTTP 403" in result["error"]
@@ -198,17 +183,23 @@ class TestEntityDetailsInvestigation:
     def test_builds_query_with_all_includes_on(self, idp_module):
         idp_module.falcon.graphql.return_value = {
             "status_code": 200,
-            "body": {"data": {"entities": {"nodes": [
-                {
-                    "entityId": "e1",
-                    "primaryDisplayName": "Administrator",
-                    "type": "USER",
-                    "riskScore": 75,
-                    "riskScoreSeverity": "HIGH",
-                    "riskFactors": [{"type": "STALE_ACCOUNT", "severity": "HIGH"}],
-                    "accounts": [{"domain": "CORP", "samAccountName": "admin"}],
+            "body": {
+                "data": {
+                    "entities": {
+                        "nodes": [
+                            {
+                                "entityId": "e1",
+                                "primaryDisplayName": "Administrator",
+                                "type": "USER",
+                                "riskScore": 75,
+                                "riskScoreSeverity": "HIGH",
+                                "riskFactors": [{"type": "STALE_ACCOUNT", "severity": "HIGH"}],
+                                "accounts": [{"domain": "CORP", "samAccountName": "admin"}],
+                            }
+                        ]
+                    }
                 }
-            ]}}},
+            },
         }
         result = idp_module._get_entity_details_batch(
             ["e1"],
@@ -247,9 +238,7 @@ class TestEntityDetailsInvestigation:
             "status_code": 403,
             "body": {"errors": [{"message": "Forbidden"}]},
         }
-        result = idp_module._get_entity_details_batch(
-            ["e1"], {"include_associations": True, "include_accounts": True, "include_incidents": True}
-        )
+        result = idp_module._get_entity_details_batch(["e1"], {"include_associations": True, "include_accounts": True, "include_incidents": True})
         assert "error" in result
         assert "HTTP 403" in result["error"]
 
@@ -273,18 +262,24 @@ class TestRiskAssessmentInvestigation:
     def test_returns_risk_scores_with_factors(self, idp_module):
         idp_module.falcon.graphql.return_value = {
             "status_code": 200,
-            "body": {"data": {"entities": {"nodes": [
-                {
-                    "entityId": "e1",
-                    "primaryDisplayName": "Admin",
-                    "riskScore": 90,
-                    "riskScoreSeverity": "CRITICAL",
-                    "riskFactors": [
-                        {"type": "ADMIN_ACCOUNT", "severity": "HIGH"},
-                        {"type": "STALE_ACCOUNT", "severity": "MEDIUM"},
-                    ],
+            "body": {
+                "data": {
+                    "entities": {
+                        "nodes": [
+                            {
+                                "entityId": "e1",
+                                "primaryDisplayName": "Admin",
+                                "riskScore": 90,
+                                "riskScoreSeverity": "CRITICAL",
+                                "riskFactors": [
+                                    {"type": "ADMIN_ACCOUNT", "severity": "HIGH"},
+                                    {"type": "STALE_ACCOUNT", "severity": "MEDIUM"},
+                                ],
+                            }
+                        ]
+                    }
                 }
-            ]}}},
+            },
         }
         result = idp_module._assess_risks_batch(["e1"], {"include_risk_factors": True})
         assert result["entity_count"] == 1
@@ -316,9 +311,7 @@ class TestRiskAssessmentInvestigation:
         """Missing riskScore / riskFactors → safe defaults, not KeyError."""
         idp_module.falcon.graphql.return_value = {
             "status_code": 200,
-            "body": {"data": {"entities": {"nodes": [
-                {"entityId": "e1", "primaryDisplayName": "X"}
-            ]}}},
+            "body": {"data": {"entities": {"nodes": [{"entityId": "e1", "primaryDisplayName": "X"}]}}},
         }
         result = idp_module._assess_risks_batch(["e1"], {"include_risk_factors": True})
         ra = result["risk_assessments"][0]
@@ -361,10 +354,14 @@ class TestTimelineInvestigation:
     def test_returns_timelines_keyed_by_entity(self, idp_module):
         idp_module.falcon.graphql.return_value = {
             "status_code": 200,
-            "body": {"data": {"timeline": {
-                "nodes": [{"eventId": "ev1", "eventType": "AUDIT"}],
-                "pageInfo": {"hasNextPage": False},
-            }}},
+            "body": {
+                "data": {
+                    "timeline": {
+                        "nodes": [{"eventId": "ev1", "eventType": "AUDIT"}],
+                        "pageInfo": {"hasNextPage": False},
+                    }
+                }
+            },
         }
         result = idp_module._get_entity_timelines_batch(["e1"], {"limit": 50})
         assert result["entity_count"] == 1
@@ -389,9 +386,7 @@ class TestRelationshipInvestigation:
             "status_code": 200,
             "body": {"data": {"entities": {"nodes": []}}},
         }
-        idp_module._analyze_relationships_batch(
-            ["e1"], {"relationship_depth": 1, "include_risk_context": True, "limit": 50}
-        )
+        idp_module._analyze_relationships_batch(["e1"], {"relationship_depth": 1, "include_risk_context": True, "limit": 50})
         q = idp_module.falcon.graphql.call_args.kwargs["body"]["query"]
         # depth=1 still contains at least one associations block
         assert q.count("associations {") >= 1
@@ -401,23 +396,17 @@ class TestRelationshipInvestigation:
             "status_code": 200,
             "body": {"data": {"entities": {"nodes": []}}},
         }
-        idp_module._analyze_relationships_batch(
-            ["e1"], {"relationship_depth": 3, "include_risk_context": True, "limit": 50}
-        )
+        idp_module._analyze_relationships_batch(["e1"], {"relationship_depth": 3, "include_risk_context": True, "limit": 50})
         q3 = idp_module.falcon.graphql.call_args.kwargs["body"]["query"]
 
         # Reset and build depth=2 query for comparison
         idp_module.falcon.graphql.reset_mock()
-        idp_module._analyze_relationships_batch(
-            ["e1"], {"relationship_depth": 2, "include_risk_context": True, "limit": 50}
-        )
+        idp_module._analyze_relationships_batch(["e1"], {"relationship_depth": 2, "include_risk_context": True, "limit": 50})
         q2 = idp_module.falcon.graphql.call_args.kwargs["body"]["query"]
 
         # Reset and build depth=1 query for comparison
         idp_module.falcon.graphql.reset_mock()
-        idp_module._analyze_relationships_batch(
-            ["e1"], {"relationship_depth": 1, "include_risk_context": True, "limit": 50}
-        )
+        idp_module._analyze_relationships_batch(["e1"], {"relationship_depth": 1, "include_risk_context": True, "limit": 50})
         q1 = idp_module.falcon.graphql.call_args.kwargs["body"]["query"]
 
         # `{nested}` is interpolated into both EntityAssociation and
@@ -438,9 +427,7 @@ class TestRelationshipInvestigation:
             "status_code": 200,
             "body": {"data": {"entities": {"nodes": []}}},
         }
-        idp_module._analyze_relationships_batch(
-            ["e1"], {"relationship_depth": 2, "include_risk_context": False, "limit": 50}
-        )
+        idp_module._analyze_relationships_batch(["e1"], {"relationship_depth": 2, "include_risk_context": False, "limit": 50})
         q = idp_module.falcon.graphql.call_args.kwargs["body"]["query"]
         assert "riskScore" not in q
         assert "riskFactors" not in q
@@ -450,9 +437,7 @@ class TestRelationshipInvestigation:
             "status_code": 200,
             "body": {"data": {"entities": {"nodes": []}}},
         }
-        result = idp_module._analyze_relationships_batch(
-            ["e1"], {"relationship_depth": 2, "include_risk_context": True, "limit": 50}
-        )
+        result = idp_module._analyze_relationships_batch(["e1"], {"relationship_depth": 2, "include_risk_context": True, "limit": 50})
         assert result["relationships"][0]["associations"] == []
         assert result["relationships"][0]["relationship_count"] == 0
 
@@ -461,30 +446,30 @@ class TestRelationshipInvestigation:
             "status_code": 403,
             "body": {"errors": [{"message": "Forbidden"}]},
         }
-        result = idp_module._analyze_relationships_batch(
-            ["e1"], {"relationship_depth": 2, "include_risk_context": True, "limit": 50}
-        )
+        result = idp_module._analyze_relationships_batch(["e1"], {"relationship_depth": 2, "include_risk_context": True, "limit": 50})
         assert "error" in result
 
     def test_counts_associations_defensively_when_field_missing(self, idp_module):
         idp_module.falcon.graphql.return_value = {
             "status_code": 200,
-            "body": {"data": {"entities": {"nodes": [
-                {"entityId": "e1"}  # no associations field
-            ]}}},
+            "body": {
+                "data": {
+                    "entities": {
+                        "nodes": [
+                            {"entityId": "e1"}  # no associations field
+                        ]
+                    }
+                }
+            },
         }
-        result = idp_module._analyze_relationships_batch(
-            ["e1"], {"relationship_depth": 2, "include_risk_context": True, "limit": 50}
-        )
+        result = idp_module._analyze_relationships_batch(["e1"], {"relationship_depth": 2, "include_risk_context": True, "limit": 50})
         assert result["relationships"][0]["associations"] == []
         assert result["relationships"][0]["relationship_count"] == 0
 
 
 class TestIdentityInvestigateEntityValidation:
     def test_no_identifiers_errors(self, idp_module):
-        result = asyncio.run(
-            idp_module.identity_investigate_entity(investigation_types=["entity_details"])
-        )
+        result = asyncio.run(idp_module.identity_investigate_entity(investigation_types=["entity_details"]))
         assert "at least one" in result.lower() or "identifier" in result.lower()
         idp_module.falcon.graphql.assert_not_called()
 
@@ -518,17 +503,11 @@ class TestIdentityInvestigateEntityValidation:
         assert "depth" in result.lower()
 
     def test_limit_out_of_range_errors(self, idp_module):
-        result = asyncio.run(
-            idp_module.identity_investigate_entity(entity_ids=["e1"], limit=5000)
-        )
+        result = asyncio.run(idp_module.identity_investigate_entity(entity_ids=["e1"], limit=5000))
         assert "limit" in result.lower()
 
     def test_empty_investigation_types_errors(self, idp_module):
-        result = asyncio.run(
-            idp_module.identity_investigate_entity(
-                entity_ids=["e1"], investigation_types=[]
-            )
-        )
+        result = asyncio.run(idp_module.identity_investigate_entity(entity_ids=["e1"], investigation_types=[]))
         assert "investigation_types" in result
         assert "empty" in result.lower() or "cannot" in result.lower()
         idp_module.falcon.graphql.assert_not_called()
@@ -541,10 +520,11 @@ class TestIdentityInvestigateEntityConvenienceParams:
             "status_code": 200,
             "body": {"data": {"entities": {"nodes": [{"entityId": "e1"}]}}},
         }
+
         # Only entity_details; set nodes response for the details query
         def router(**kw):
             q = kw["body"]["query"]
-            if "primaryDisplayNames: [\"jdoe\"]" in q:
+            if 'primaryDisplayNames: ["jdoe"]' in q:
                 return {
                     "status_code": 200,
                     "body": {"data": {"entities": {"nodes": [{"entityId": "e1"}]}}},
@@ -552,30 +532,26 @@ class TestIdentityInvestigateEntityConvenienceParams:
             # details query for resolved id
             return {
                 "status_code": 200,
-                "body": {"data": {"entities": {"nodes": [
-                    {"entityId": "e1", "primaryDisplayName": "jdoe", "type": "USER", "riskScore": 80}
-                ]}}},
+                "body": {"data": {"entities": {"nodes": [{"entityId": "e1", "primaryDisplayName": "jdoe", "type": "USER", "riskScore": 80}]}}},
             }
+
         idp_module.falcon.graphql.side_effect = router
-        result = asyncio.run(
-            idp_module.identity_investigate_entity(username="jdoe")
-        )
+        result = asyncio.run(idp_module.identity_investigate_entity(username="jdoe"))
         assert "jdoe" in result
         # Verify the resolution call happened with the username in primaryDisplayNames
-        assert any(
-            'primaryDisplayNames: ["jdoe"]' in c.kwargs["body"]["query"]
-            for c in idp_module.falcon.graphql.call_args_list
-        )
+        assert any('primaryDisplayNames: ["jdoe"]' in c.kwargs["body"]["query"] for c in idp_module.falcon.graphql.call_args_list)
 
     def test_username_and_entity_names_combined(self, idp_module):
         """`username=` is appended to `entity_names=`, not replacing it."""
         calls_seen = []
+
         def router(**kw):
             calls_seen.append(kw["body"]["query"])
             return {
                 "status_code": 200,
                 "body": {"data": {"entities": {"nodes": [{"entityId": "e1"}]}}},
             }
+
         idp_module.falcon.graphql.side_effect = router
         asyncio.run(
             idp_module.identity_investigate_entity(
@@ -591,12 +567,14 @@ class TestIdentityInvestigateEntityConvenienceParams:
     def test_username_duplicate_not_doubled(self, idp_module):
         """If `username` is already in `entity_names`, don't duplicate it."""
         captured = []
+
         def router(**kw):
             captured.append(kw["body"]["query"])
             return {
                 "status_code": 200,
                 "body": {"data": {"entities": {"nodes": [{"entityId": "e1"}]}}},
             }
+
         idp_module.falcon.graphql.side_effect = router
         asyncio.run(
             idp_module.identity_investigate_entity(
@@ -612,15 +590,20 @@ class TestIdentityInvestigateEntityConvenienceParams:
         """`quick_triage=True` → investigation_types locked to [entity_details, risk_assessment],
         and the includes are all False."""
         queries = []
+
         def router(**kw):
             queries.append(kw["body"]["query"])
             return {
                 "status_code": 200,
-                "body": {"data": {"entities": {"nodes": [
-                    {"entityId": "e1", "primaryDisplayName": "jdoe", "type": "USER",
-                     "riskScore": 90, "riskScoreSeverity": "HIGH"}
-                ]}}},
+                "body": {
+                    "data": {
+                        "entities": {
+                            "nodes": [{"entityId": "e1", "primaryDisplayName": "jdoe", "type": "USER", "riskScore": 90, "riskScoreSeverity": "HIGH"}]
+                        }
+                    }
+                },
             }
+
         idp_module.falcon.graphql.side_effect = router
         result = asyncio.run(
             idp_module.identity_investigate_entity(
@@ -657,10 +640,15 @@ class TestIdentityInvestigateEntityConvenienceParams:
             if "entityIds" in q:
                 return {
                     "status_code": 200,
-                    "body": {"data": {"entities": {"nodes": [
-                        {"entityId": "e-resolved", "primaryDisplayName": "Admin", "type": "USER",
-                         "riskScore": 80, "riskScoreSeverity": "HIGH"}
-                    ]}}},
+                    "body": {
+                        "data": {
+                            "entities": {
+                                "nodes": [
+                                    {"entityId": "e-resolved", "primaryDisplayName": "Admin", "type": "USER", "riskScore": 80, "riskScoreSeverity": "HIGH"}
+                                ]
+                            }
+                        }
+                    },
                 }
             return {"status_code": 500, "body": {"errors": [{"message": "unexpected query"}]}}
 
@@ -693,15 +681,27 @@ class TestIdentityInvestigateEntityConvenienceParams:
         def router(body):
             q = body["query"]
             if "riskFactors" in q and "entities(entityIds" in q and "openIncidents" in q:
-                return {"status_code": 200, "body": {"data": {"entities": {"nodes": [
-                    {"entityId": "e1", "primaryDisplayName": "A", "type": "USER",
-                     "riskScore": 42, "riskScoreSeverity": "MEDIUM"}
-                ]}}}}
+                return {
+                    "status_code": 200,
+                    "body": {
+                        "data": {
+                            "entities": {
+                                "nodes": [{"entityId": "e1", "primaryDisplayName": "A", "type": "USER", "riskScore": 42, "riskScoreSeverity": "MEDIUM"}]
+                            }
+                        }
+                    },
+                }
             if "riskFactors" in q:  # risk assessment (no openIncidents)
-                return {"status_code": 200, "body": {"data": {"entities": {"nodes": [
-                    {"entityId": "e1", "primaryDisplayName": "A",
-                     "riskScore": 42, "riskScoreSeverity": "MEDIUM", "riskFactors": []}
-                ]}}}}
+                return {
+                    "status_code": 200,
+                    "body": {
+                        "data": {
+                            "entities": {
+                                "nodes": [{"entityId": "e1", "primaryDisplayName": "A", "riskScore": 42, "riskScoreSeverity": "MEDIUM", "riskFactors": []}]
+                            }
+                        }
+                    },
+                }
             return {"status_code": 200, "body": {"data": {"entities": {"nodes": []}}}}
 
         idp_module.falcon.graphql.side_effect = lambda **kw: router(kw["body"])
