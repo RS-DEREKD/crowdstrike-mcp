@@ -654,7 +654,11 @@ class IDPModule(BaseModule):
                     lines.append(f"- Entity `{tl.get('entity_id', '?')}`: {len(events)} events")
                     for ev in events[:10]:
                         if isinstance(ev, dict):
-                            lines.append(f"  - {ev.get('timestamp', '?')} {ev.get('eventType', '?')} [{ev.get('eventSeverity', '?')}] id=`{ev.get('eventId', '?')}`")
+                            ts = ev.get("timestamp", "?")
+                            et = ev.get("eventType", "?")
+                            sev = ev.get("eventSeverity", "?")
+                            eid = ev.get("eventId", "?")
+                            lines.append(f"  - {ts} {et} [{sev}] id=`{eid}`")
             elif inv_type == "relationship_analysis":
                 for rel in r.get("relationships", []):
                     assocs = rel.get("associations") or []

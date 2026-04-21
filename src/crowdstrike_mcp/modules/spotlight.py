@@ -385,7 +385,12 @@ class SpotlightModule(BaseModule):
                 kwargs["sort"] = sort
             r = svc.query_vulnerabilities_combined(**kwargs)
             if r["status_code"] != 200:
-                return {"success": False, "error": format_api_error(r, "Failed to query vulnerabilities combined", operation="query_vulnerabilities_combined")}
+                err = format_api_error(
+                    r,
+                    "Failed to query vulnerabilities combined",
+                    operation="query_vulnerabilities_combined",
+                )
+                return {"success": False, "error": err}
             body = r.get("body", {})
             resources = body.get("resources", [])
             meta = body.get("meta", {}).get("pagination", {})
