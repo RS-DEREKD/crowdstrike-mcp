@@ -454,9 +454,7 @@ class CloudSecurityModule(BaseModule):
         changes = result["changes"]
         lines.append(f"Configuration changes: {result['total_changes']} total")
         for i, c in enumerate(changes, 1):
-            lines.append(
-                f"  {i}. {c['updated_at']}  rev {c['asset_revision']}  {c['external_asset_type']}"
-            )
+            lines.append(f"  {i}. {c['updated_at']}  rev {c['asset_revision']}  {c['external_asset_type']}")
             if c.get("changes"):
                 chg_str = "; ".join(f"{ch['action']} {ch['attribute']}" for ch in c["changes"][:5])
                 more = len(c["changes"]) - 5
@@ -465,10 +463,7 @@ class CloudSecurityModule(BaseModule):
                 lines.append(f"     changes: {chg_str}")
             rev = c.get("resource_events", [])
             for ev in rev[:3]:
-                lines.append(
-                    f"     triggered by: {ev.get('event_name', '')} "
-                    f"user={ev.get('user_name', ev.get('user_id', ''))}"
-                )
+                lines.append(f"     triggered by: {ev.get('event_name', '')} user={ev.get('user_name', ev.get('user_id', ''))}")
             more_rev = len(rev) - 3
             if more_rev > 0:
                 lines.append(f"     (+{more_rev} more triggers)")
@@ -479,9 +474,7 @@ class CloudSecurityModule(BaseModule):
         for row in tl:
             if row["kind"] == "risk":
                 synth_tag = " (current state)" if row.get("synthetic") else ""
-                lines.append(
-                    f"  {row['timestamp']}  risk     {row['event_type']}{synth_tag}  {row.get('rule_name', '')}"
-                )
+                lines.append(f"  {row['timestamp']}  risk     {row['event_type']}{synth_tag}  {row.get('rule_name', '')}")
             else:
                 lines.append(
                     f"  {row['timestamp']}  change   rev{row.get('asset_revision', '?')}  "
@@ -748,10 +741,7 @@ class CloudSecurityModule(BaseModule):
                     "timeline": [],
                     "total_risks": 0,
                     "total_changes": 0,
-                    "message": (
-                        f"No timeline found for GCRN '{asset_id}' "
-                        "(feature may not be enabled on this tenant or GCRN is unknown)."
-                    ),
+                    "message": (f"No timeline found for GCRN '{asset_id}' (feature may not be enabled on this tenant or GCRN is unknown)."),
                 }
 
             entry = resources[0]

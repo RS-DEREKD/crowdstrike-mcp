@@ -6,7 +6,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-
 SAMPLE_TIMELINE_BODY = {
     "resources": [
         {
@@ -125,10 +124,12 @@ SAMPLE_TIMELINE_BODY = {
 @pytest.fixture
 def cloud_module(mock_client):
     """Create CloudSecurityModule with all falconpy classes (and APIHarnessV2) mocked."""
-    with patch("crowdstrike_mcp.modules.cloud_security.CloudSecurity") as MockCS, \
-         patch("crowdstrike_mcp.modules.cloud_security.CloudSecurityDetections") as MockCSD, \
-         patch("crowdstrike_mcp.modules.cloud_security.CloudSecurityAssets") as MockCSA, \
-         patch("crowdstrike_mcp.modules.cloud_security.APIHarnessV2") as MockHarness:
+    with (
+        patch("crowdstrike_mcp.modules.cloud_security.CloudSecurity") as MockCS,
+        patch("crowdstrike_mcp.modules.cloud_security.CloudSecurityDetections") as MockCSD,
+        patch("crowdstrike_mcp.modules.cloud_security.CloudSecurityAssets") as MockCSA,
+        patch("crowdstrike_mcp.modules.cloud_security.APIHarnessV2") as MockHarness,
+    ):
         mock_cs = MagicMock()
         mock_csd = MagicMock()
         mock_csa = MagicMock()
@@ -164,9 +165,7 @@ class TestGetRiskTimelineProjection:
             "status_code": 200,
             "body": SAMPLE_TIMELINE_BODY,
         }
-        result = cloud_module._get_risk_timeline(
-            asset_id="crn:aws:s3:us-east-1:123456789012:bucket/example-bucket"
-        )
+        result = cloud_module._get_risk_timeline(asset_id="crn:aws:s3:us-east-1:123456789012:bucket/example-bucket")
         assert result["success"] is True
         asset = result["asset"]
         assert asset["id"] == "crn:aws:s3:us-east-1:123456789012:bucket/example-bucket"
@@ -203,9 +202,7 @@ class TestGetRiskTimelineProjection:
         assert change["asset_revision"] == 42
         assert change["external_asset_type"] == "AWS::S3::Bucket"
         assert change["updated_at"] == "2026-04-18T09:12:00Z"
-        assert change["changes"] == [
-            {"action": "set", "attribute": "public_access_block.block_public_acls"}
-        ]
+        assert change["changes"] == [{"action": "set", "attribute": "public_access_block.block_public_acls"}]
         assert change["resource_events"][0]["event_name"] == "PutPublicAccessBlock"
         assert change["resource_events"][0]["user_name"] == "bob"
 
@@ -437,9 +434,7 @@ class TestCloudGetRiskTimelineFormatting:
             "status_code": 200,
             "body": SAMPLE_TIMELINE_BODY,
         }
-        out = asyncio.run(
-            cloud_module.cloud_get_risk_timeline(asset_id="crn:x")
-        )
+        out = asyncio.run(cloud_module.cloud_get_risk_timeline(asset_id="crn:x"))
         assert "Cloud Risk Timeline for" in out
         assert "AWS::S3::Bucket" in out
         assert "123456789012" in out
@@ -449,9 +444,7 @@ class TestCloudGetRiskTimelineFormatting:
             "status_code": 200,
             "body": SAMPLE_TIMELINE_BODY,
         }
-        out = asyncio.run(
-            cloud_module.cloud_get_risk_timeline(asset_id="crn:x")
-        )
+        out = asyncio.run(cloud_module.cloud_get_risk_timeline(asset_id="crn:x"))
         assert "S3 bucket publicly accessible" in out
         assert "S3 bucket missing encryption" in out
         assert "PutPublicAccessBlock" in out
@@ -461,9 +454,7 @@ class TestCloudGetRiskTimelineFormatting:
             "status_code": 200,
             "body": SAMPLE_TIMELINE_BODY,
         }
-        out = asyncio.run(
-            cloud_module.cloud_get_risk_timeline(asset_id="crn:x")
-        )
+        out = asyncio.run(cloud_module.cloud_get_risk_timeline(asset_id="crn:x"))
         assert "Merged timeline" in out
         assert "2026-04-18T09:12:00Z" in out
 
@@ -472,9 +463,7 @@ class TestCloudGetRiskTimelineFormatting:
             "status_code": 200,
             "body": SAMPLE_TIMELINE_BODY,
         }
-        out = asyncio.run(
-            cloud_module.cloud_get_risk_timeline(asset_id="crn:x", full=True)
-        )
+        out = asyncio.run(cloud_module.cloud_get_risk_timeline(asset_id="crn:x", full=True))
         parsed = json.loads(out)
         assert parsed["success"] is True
         assert parsed["asset"]["cloud_provider"] == "aws"
@@ -485,9 +474,7 @@ class TestCloudGetRiskTimelineFormatting:
             "status_code": 200,
             "body": {"resources": []},
         }
-        out = asyncio.run(
-            cloud_module.cloud_get_risk_timeline(asset_id="crn:missing")
-        )
+        out = asyncio.run(cloud_module.cloud_get_risk_timeline(asset_id="crn:missing"))
         assert "No timeline found" in out
         assert "crn:missing" in out
 
@@ -496,9 +483,7 @@ class TestCloudGetRiskTimelineFormatting:
             "status_code": 403,
             "body": {"errors": [{"message": "Forbidden"}]},
         }
-        out = asyncio.run(
-            cloud_module.cloud_get_risk_timeline(asset_id="crn:x")
-        )
+        out = asyncio.run(cloud_module.cloud_get_risk_timeline(asset_id="crn:x"))
         assert "Failed to get cloud risk timeline" in out
         assert "403" in out
 
@@ -507,9 +492,7 @@ class TestCloudGetRiskTimelineFormatting:
             "status_code": 429,
             "body": {"errors": [{"message": "Too Many Requests"}]},
         }
-        out = asyncio.run(
-            cloud_module.cloud_get_risk_timeline(asset_id="crn:x")
-        )
+        out = asyncio.run(cloud_module.cloud_get_risk_timeline(asset_id="crn:x"))
         assert "429" in out
         assert "500 requests/min" in out
 
@@ -551,9 +534,7 @@ class TestCloudGetRiskTimelineFormatting:
             "status_code": 200,
             "body": SAMPLE_TIMELINE_BODY,
         }
-        out = asyncio.run(
-            cloud_module.cloud_get_risk_timeline(asset_id="crn:x", risk_id="ri-100")
-        )
+        out = asyncio.run(cloud_module.cloud_get_risk_timeline(asset_id="crn:x", risk_id="ri-100"))
         # ri-100's rule name must appear; ri-200's must not.
         assert "S3 bucket publicly accessible" in out
         assert "S3 bucket missing encryption" not in out
@@ -568,14 +549,17 @@ class TestCloudTimelineRegistration:
 
     def test_tool_not_registered_when_harness_unavailable(self, mock_client):
         # Patch HARNESS_AVAILABLE to False and verify the tool is skipped
-        with patch("crowdstrike_mcp.modules.cloud_security.CloudSecurity") as MockCS, \
-             patch("crowdstrike_mcp.modules.cloud_security.CloudSecurityDetections") as MockCSD, \
-             patch("crowdstrike_mcp.modules.cloud_security.CloudSecurityAssets") as MockCSA, \
-             patch("crowdstrike_mcp.modules.cloud_security.HARNESS_AVAILABLE", False):
+        with (
+            patch("crowdstrike_mcp.modules.cloud_security.CloudSecurity") as MockCS,
+            patch("crowdstrike_mcp.modules.cloud_security.CloudSecurityDetections") as MockCSD,
+            patch("crowdstrike_mcp.modules.cloud_security.CloudSecurityAssets") as MockCSA,
+            patch("crowdstrike_mcp.modules.cloud_security.HARNESS_AVAILABLE", False),
+        ):
             MockCS.return_value = MagicMock()
             MockCSD.return_value = MagicMock()
             MockCSA.return_value = MagicMock()
             from crowdstrike_mcp.modules.cloud_security import CloudSecurityModule
+
             module = CloudSecurityModule(mock_client)
             server = MagicMock()
             server.tool.return_value = lambda fn: fn
