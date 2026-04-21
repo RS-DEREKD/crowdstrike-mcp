@@ -192,3 +192,78 @@ class TestResolveEntities:
         assert isinstance(result, dict)
         assert "error" in result
         assert "HTTP 403" in result["error"]
+
+
+class TestEntityDetailsInvestigation:
+    def test_builds_query_with_all_includes_on(self, idp_module):
+        idp_module.falcon.graphql.return_value = {
+            "status_code": 200,
+            "body": {"data": {"entities": {"nodes": [
+                {
+                    "entityId": "e1",
+                    "primaryDisplayName": "Administrator",
+                    "type": "USER",
+                    "riskScore": 75,
+                    "riskScoreSeverity": "HIGH",
+                    "riskFactors": [{"type": "STALE_ACCOUNT", "severity": "HIGH"}],
+                    "accounts": [{"domain": "CORP", "samAccountName": "admin"}],
+                }
+            ]}}},
+        }
+        result = idp_module._get_entity_details_batch(
+            ["e1"],
+            {"include_associations": True, "include_accounts": True, "include_incidents": True},
+        )
+        assert result["entity_count"] == 1
+        assert result["entities"][0]["entityId"] == "e1"
+        q = idp_module.falcon.graphql.call_args.kwargs["body"]["query"]
+        # All include-blocks present
+        assert "riskFactors" in q
+        assert "associations" in q
+        assert "openIncidents" in q
+        assert "accounts" in q
+        assert "ActiveDirectoryAccountDescriptor" in q
+
+    def test_include_flags_drop_optional_sections(self, idp_module):
+        idp_module.falcon.graphql.return_value = {
+            "status_code": 200,
+            "body": {"data": {"entities": {"nodes": []}}},
+        }
+        idp_module._get_entity_details_batch(
+            ["e1"],
+            {"include_associations": False, "include_accounts": False, "include_incidents": False},
+        )
+        q = idp_module.falcon.graphql.call_args.kwargs["body"]["query"]
+        assert "associations" not in q
+        assert "openIncidents" not in q
+        assert "ActiveDirectoryAccountDescriptor" not in q
+        # Core fields still present
+        assert "riskScore" in q
+
+    def test_handles_api_error(self, idp_module):
+        """403 carries through as an error response — operation name preserved so
+        scope-aware error message fires."""
+        idp_module.falcon.graphql.return_value = {
+            "status_code": 403,
+            "body": {"errors": [{"message": "Forbidden"}]},
+        }
+        result = idp_module._get_entity_details_batch(
+            ["e1"], {"include_associations": True, "include_accounts": True, "include_incidents": True}
+        )
+        assert "error" in result
+        assert "HTTP 403" in result["error"]
+
+    def test_entity_ids_are_json_escaped(self, idp_module):
+        """Entity IDs must be json.dumps-escaped to avoid GraphQL syntax breakage."""
+        idp_module.falcon.graphql.return_value = {
+            "status_code": 200,
+            "body": {"data": {"entities": {"nodes": []}}},
+        }
+        idp_module._get_entity_details_batch(
+            ['e"1', "e-2"],
+            {"include_associations": True, "include_accounts": True, "include_incidents": True},
+        )
+        q = idp_module.falcon.graphql.call_args.kwargs["body"]["query"]
+        # Both IDs appear; embedded quote is escaped
+        assert '"e-2"' in q
+        assert 'e\\"1' in q or '"e\\"1"' in q or '"e1"' in q  # json.dumps escapes as \"

@@ -198,3 +198,91 @@ class IDPModule(BaseModule):
             fields.add("secondaryDisplayName")
             return domains
         return None
+
+    # --------------------------------------------------
+    # entity_details
+    # --------------------------------------------------
+    def _build_entity_details_query(
+        self,
+        entity_ids: list[str],
+        include_risk_factors: bool,
+        include_associations: bool,
+        include_incidents: bool,
+        include_accounts: bool,
+    ) -> str:
+        ids_json = json.dumps(entity_ids)
+        fields = [
+            "entityId", "primaryDisplayName", "secondaryDisplayName",
+            "type", "riskScore", "riskScoreSeverity",
+        ]
+        if include_risk_factors:
+            fields.append("riskFactors { type severity }")
+        if include_associations:
+            fields.append("""
+                associations {
+                    bindingType
+                    ... on EntityAssociation {
+                        entity { entityId primaryDisplayName secondaryDisplayName type }
+                    }
+                    ... on LocalAdminLocalUserAssociation { accountName }
+                    ... on LocalAdminDomainEntityAssociation {
+                        entityType
+                        entity { entityId primaryDisplayName secondaryDisplayName }
+                    }
+                    ... on GeoLocationAssociation {
+                        geoLocation { country countryCode city cityCode latitude longitude }
+                    }
+                }""")
+        if include_incidents:
+            fields.append("""
+                openIncidents(first: 10) {
+                    nodes {
+                        type startTime endTime
+                        compromisedEntities { entityId primaryDisplayName }
+                    }
+                }""")
+        if include_accounts:
+            fields.append("""
+                accounts {
+                    ... on ActiveDirectoryAccountDescriptor {
+                        domain samAccountName ou servicePrincipalNames
+                        passwordAttributes { lastChange strength }
+                        expirationTime
+                    }
+                    ... on SsoUserAccountDescriptor {
+                        dataSource mostRecentActivity title creationTime
+                        passwordAttributes { lastChange }
+                    }
+                    ... on AzureCloudServiceAdapterDescriptor {
+                        registeredTenantType appOwnerOrganizationId
+                        publisherDomain signInAudience
+                    }
+                    ... on CloudServiceAdapterDescriptor { dataSourceParticipantIdentifier }
+                }""")
+        fields_str = "\n                ".join(fields)
+        return f"""
+        query {{
+            entities(entityIds: {ids_json}, first: 50) {{
+                nodes {{
+                    {fields_str}
+                }}
+            }}
+        }}
+        """
+
+    def _get_entity_details_batch(
+        self, entity_ids: list[str], options: dict[str, Any]
+    ) -> dict[str, Any]:
+        query = self._build_entity_details_query(
+            entity_ids=entity_ids,
+            include_risk_factors=True,
+            include_associations=options.get("include_associations", True),
+            include_incidents=options.get("include_incidents", True),
+            include_accounts=options.get("include_accounts", True),
+        )
+        result = self._graphql_call(query, context="Failed to get entity details")
+        if not result.get("success"):
+            return {"error": result["error"]}
+        nodes = result["data"].get("entities", {}).get("nodes", []) or []
+        nodes = [n for n in nodes if isinstance(n, dict)]
+        return {"entities": nodes, "entity_count": len(nodes)}
