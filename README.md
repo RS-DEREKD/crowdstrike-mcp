@@ -2,7 +2,7 @@
 
 A modular, multi-transport [Model Context Protocol](https://modelcontextprotocol.io/) server that connects AI assistants to the CrowdStrike Falcon platform. Query NG-SIEM logs, triage alerts, inspect endpoints, manage detection rules, and audit cloud security posture — all through natural language.
 
-**v3.0** — Modular auto-discovery architecture with 58 tools across 12 modules.
+**v3.0** — Modular auto-discovery architecture with 70 tools across 12 modules.
 
 
 ---
@@ -183,13 +183,27 @@ docker run -p 8000:8000 \
 | Tool | Description |
 |------|-------------|
 | `ngsiem_query` | Execute CQL queries across all CrowdStrike logs (search-all repository) |
+| `ngsiem_list_saved_queries` | Enumerate saved searches (enrichment functions, detections) |
+| `ngsiem_get_saved_query_template` | Retrieve a saved search's live body and metadata |
+| `ngsiem_list_lookup_files` | Enumerate lookup files |
+| `ngsiem_get_lookup_file` | Get a lookup file's metadata (content opt-in) |
+| `ngsiem_list_dashboards` | Enumerate dashboards |
+| `ngsiem_list_parsers` | Enumerate parsers |
+| `ngsiem_get_parser` | Get a parser's live config |
+| `ngsiem_list_data_connections` | Enumerate data connections (ingestion) |
+| `ngsiem_get_data_connection` | Get connection state for one ID |
+| `ngsiem_get_provisioning_status` | Get provisioning / ingestion health status |
+| `ngsiem_list_data_connectors` | Enumerate available data connectors |
+| `ngsiem_list_connector_configs` | Enumerate connector configuration instances |
 
-**Parameters:** `query` (CQL string), `start_time` (e.g. `1h`, `1d`, `7d`, `30d`), `max_results` (1-1000)
+**`ngsiem_query` parameters:** `query` (CQL string), `start_time` (e.g. `1h`, `1d`, `7d`, `30d`), `max_results` (1-1000)
 
 ```
 "Show me failed console logins in the last 24 hours"
 → ngsiem_query(query='#repo="cloudtrail" event.action="ConsoleLogin" #event.outcome!="success"', start_time="1d")
 ```
+
+The `list_*` tools default to compact projections (id, name, last_modified); pass `detail=true` to get full records. `ngsiem_get_lookup_file` is metadata-only unless `include_content=true`. Every read tool is scoped to `ngsiem:read`; write operations remain with `talonctl`.
 
 ### Alerts — `modules/alerts.py`
 
@@ -553,7 +567,7 @@ Responses exceeding 20KB are automatically written to temporary files with a tru
 
 ### Shared OAuth2 Session
 
-All modules share a single `OAuth2` token through `FalconClient.auth_object`. This means one authentication handshake for all 52 tools, regardless of how many FalconPy service classes are instantiated.
+All modules share a single `OAuth2` token through `FalconClient.auth_object`. This means one authentication handshake for all 70 tools, regardless of how many FalconPy service classes are instantiated.
 
 ---
 
@@ -564,6 +578,18 @@ All modules share a single `OAuth2` token through `FalconClient.auth_object`. Th
 | Tool | Module | Required Scopes | Notes |
 |------|--------|----------------|-------|
 | `ngsiem_query` | NG-SIEM | `ngsiem:read` | `ngsiem:write` only needed for timeout cleanup |
+| `ngsiem_list_saved_queries` | NG-SIEM | `ngsiem:read` | |
+| `ngsiem_get_saved_query_template` | NG-SIEM | `ngsiem:read` | |
+| `ngsiem_list_lookup_files` | NG-SIEM | `ngsiem:read` | |
+| `ngsiem_get_lookup_file` | NG-SIEM | `ngsiem:read` | Metadata only unless `include_content=true` |
+| `ngsiem_list_dashboards` | NG-SIEM | `ngsiem:read` | |
+| `ngsiem_list_parsers` | NG-SIEM | `ngsiem:read` | |
+| `ngsiem_get_parser` | NG-SIEM | `ngsiem:read` | |
+| `ngsiem_list_data_connections` | NG-SIEM | `ngsiem:read` | |
+| `ngsiem_get_data_connection` | NG-SIEM | `ngsiem:read` | |
+| `ngsiem_get_provisioning_status` | NG-SIEM | `ngsiem:read` | |
+| `ngsiem_list_data_connectors` | NG-SIEM | `ngsiem:read` | |
+| `ngsiem_list_connector_configs` | NG-SIEM | `ngsiem:read` | |
 | `get_alerts` | Alerts | `alerts:read` | |
 | `alert_analysis` | Alerts | `alerts:read` | |
 | `ngsiem_alert_analysis` | Alerts | `alerts:read` | Alias for `alert_analysis` |

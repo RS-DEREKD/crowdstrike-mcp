@@ -9,16 +9,16 @@ independently implementable — they do not depend on each other.
 
 ## Index
 
-| # | Title | Primary lens | Falconpy collection | Proposed tools |
-|---|---|---|---|---|
-| 01 | [Identity Protection](01-identity-protection.md) | Triage | `identity_protection` | 4-5 read-only |
-| 02 | [Spotlight Vulnerabilities](02-spotlight-vulnerabilities.md) | Triage | `spotlight_vulnerabilities` | 3-4 read-only |
-| 03 | [RTR read-only session + commands](03-rtr-read-only.md) | Triage | `real_time_response` | ~7 (restricted subset) |
-| 04 | [Falcon X Sandbox](04-falconx-sandbox.md) | Triage + hunting | `falconx_sandbox` | 6-8 (submit + reads) |
-| 05 | [Intel + Indicator Graph](05-intel-and-indicator-graph.md) | Hunting | `intel` + `intelligence_indicator_graph` | 7-8 |
-| 06 | [Threat Graph](06-threat-graph.md) | Triage + hunting | `threatgraph` | 4-5 |
-| 07 | [NGSIEM read expansion](07-ngsiem-read-expansion.md) | IaC + triage | `ngsiem` (read subset) | ~10 |
-| 08 | [Cloud Risk Enriched Timeline](08-cloud-risk-timeline.md) | Triage + investigation | `cloud_security` (raw API — new endpoint) | 1 (small) |
+| # | Title | Primary lens | Falconpy collection | Proposed tools | Status |
+|---|---|---|---|---|---|
+| 01 | [Identity Protection](01-identity-protection.md) | Triage | `identity_protection` | 4-5 read-only | Implemented |
+| 02 | [Spotlight Vulnerabilities](02-spotlight-vulnerabilities.md) | Triage | `spotlight_vulnerabilities` | 3-4 read-only | Implemented |
+| 03 | [RTR read-only session + commands](03-rtr-read-only.md) | Triage | `real_time_response` | ~7 (restricted subset) | Implemented |
+| 04 | [Falcon X Sandbox](04-falconx-sandbox.md) | Triage + hunting | `falconx_sandbox` | 6-8 (submit + reads) | Proposed |
+| 05 | [Intel + Indicator Graph](05-intel-and-indicator-graph.md) | Hunting | `intel` + `intelligence_indicator_graph` | 7-8 | Proposed |
+| 06 | [Threat Graph](06-threat-graph.md) | Triage + hunting | `threatgraph` | 4-5 | Proposed |
+| 07 | [NGSIEM read expansion](07-ngsiem-read-expansion.md) | IaC + triage | `ngsiem` (read subset) | 12 read-only | Implemented 2026-04-21 |
+| 08 | [Cloud Risk Enriched Timeline](08-cloud-risk-timeline.md) | Triage + investigation | `cloud_security` (raw API — new endpoint) | 1 (small) | Proposed |
 
 ## Lens definitions
 
