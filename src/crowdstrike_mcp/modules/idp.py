@@ -286,3 +286,41 @@ class IDPModule(BaseModule):
         nodes = result["data"].get("entities", {}).get("nodes", []) or []
         nodes = [n for n in nodes if isinstance(n, dict)]
         return {"entities": nodes, "entity_count": len(nodes)}
+
+    # --------------------------------------------------
+    # risk_assessment
+    # --------------------------------------------------
+    def _build_risk_assessment_query(self, entity_ids: list[str], include_factors: bool) -> str:
+        ids_json = json.dumps(entity_ids)
+        risk = "riskScore\n                riskScoreSeverity"
+        if include_factors:
+            risk += "\n                riskFactors { type severity }"
+        return f"""
+        query {{
+            entities(entityIds: {ids_json}, first: 50) {{
+                nodes {{
+                    entityId
+                    primaryDisplayName
+                    {risk}
+                }}
+            }}
+        }}
+        """
+
+    def _assess_risks_batch(self, entity_ids: list[str], options: dict[str, Any]) -> dict[str, Any]:
+        query = self._build_risk_assessment_query(entity_ids, options.get("include_risk_factors", True))
+        result = self._graphql_call(query, context="Failed to assess risks")
+        if not result.get("success"):
+            return {"error": result["error"]}
+        nodes = result["data"].get("entities", {}).get("nodes", []) or []
+        assessments = [
+            {
+                "entityId": n.get("entityId"),
+                "primaryDisplayName": n.get("primaryDisplayName"),
+                "riskScore": n.get("riskScore", 0),
+                "riskScoreSeverity": n.get("riskScoreSeverity", "LOW"),
+                "riskFactors": n.get("riskFactors", []) if isinstance(n.get("riskFactors"), list) else [],
+            }
+            for n in nodes if isinstance(n, dict)
+        ]
+        return {"risk_assessments": assessments, "entity_count": len(assessments)}

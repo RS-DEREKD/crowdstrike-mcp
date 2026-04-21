@@ -267,3 +267,61 @@ class TestEntityDetailsInvestigation:
         # Both IDs appear; embedded quote is escaped
         assert '"e-2"' in q
         assert 'e\\"1' in q or '"e\\"1"' in q or '"e1"' in q  # json.dumps escapes as \"
+
+
+class TestRiskAssessmentInvestigation:
+    def test_returns_risk_scores_with_factors(self, idp_module):
+        idp_module.falcon.graphql.return_value = {
+            "status_code": 200,
+            "body": {"data": {"entities": {"nodes": [
+                {
+                    "entityId": "e1",
+                    "primaryDisplayName": "Admin",
+                    "riskScore": 90,
+                    "riskScoreSeverity": "CRITICAL",
+                    "riskFactors": [
+                        {"type": "ADMIN_ACCOUNT", "severity": "HIGH"},
+                        {"type": "STALE_ACCOUNT", "severity": "MEDIUM"},
+                    ],
+                }
+            ]}}},
+        }
+        result = idp_module._assess_risks_batch(["e1"], {"include_risk_factors": True})
+        assert result["entity_count"] == 1
+        ra = result["risk_assessments"][0]
+        assert ra["riskScore"] == 90
+        assert ra["riskScoreSeverity"] == "CRITICAL"
+        assert len(ra["riskFactors"]) == 2
+
+    def test_without_risk_factors(self, idp_module):
+        idp_module.falcon.graphql.return_value = {
+            "status_code": 200,
+            "body": {"data": {"entities": {"nodes": []}}},
+        }
+        idp_module._assess_risks_batch(["e1"], {"include_risk_factors": False})
+        q = idp_module.falcon.graphql.call_args.kwargs["body"]["query"]
+        assert "riskScore" in q
+        assert "riskFactors" not in q
+
+    def test_handles_api_error(self, idp_module):
+        idp_module.falcon.graphql.return_value = {
+            "status_code": 500,
+            "body": {"errors": [{"message": "Boom"}]},
+        }
+        result = idp_module._assess_risks_batch(["e1"], {"include_risk_factors": True})
+        assert "error" in result
+        assert "HTTP 500" in result["error"]
+
+    def test_defensive_projection_on_missing_fields(self, idp_module):
+        """Missing riskScore / riskFactors → safe defaults, not KeyError."""
+        idp_module.falcon.graphql.return_value = {
+            "status_code": 200,
+            "body": {"data": {"entities": {"nodes": [
+                {"entityId": "e1", "primaryDisplayName": "X"}
+            ]}}},
+        }
+        result = idp_module._assess_risks_batch(["e1"], {"include_risk_factors": True})
+        ra = result["risk_assessments"][0]
+        assert ra["riskScore"] == 0
+        assert ra["riskScoreSeverity"] == "LOW"
+        assert ra["riskFactors"] == []
