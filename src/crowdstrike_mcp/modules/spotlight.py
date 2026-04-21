@@ -44,8 +44,7 @@ class SpotlightModule(BaseModule):
         super().__init__(client)
         if not SPOTLIGHT_EVAL_AVAILABLE and not SPOTLIGHT_VULNS_AVAILABLE:
             raise ImportError(
-                "Neither SpotlightEvaluationLogic nor SpotlightVulnerabilities available. "
-                "Ensure crowdstrike-falconpy >= 1.6.1 is installed."
+                "Neither SpotlightEvaluationLogic nor SpotlightVulnerabilities available. Ensure crowdstrike-falconpy >= 1.6.1 is installed."
             )
         self._log("Initialized")
 
@@ -357,10 +356,7 @@ class SpotlightModule(BaseModule):
             lines.append("No vulnerabilities matched the filter.")
         else:
             for i, v in enumerate(items, 1):
-                lines.append(
-                    f"{i}. **{v['cve_id'] or '(no CVE)'}** [{v['severity']}] score={v['base_score']} "
-                    f"exploit={v['exploit_status']}"
-                )
+                lines.append(f"{i}. **{v['cve_id'] or '(no CVE)'}** [{v['severity']}] score={v['base_score']} exploit={v['exploit_status']}")
                 lines.append(f"   Host: {v['hostname']} ({v['platform']}) | Status: {v['status']} | Created: {v['created_timestamp']}")
                 if v["apps"]:
                     lines.append(f"   Apps: {'; '.join(a for a in v['apps'] if a)}")
@@ -385,7 +381,10 @@ class SpotlightModule(BaseModule):
                 kwargs["sort"] = sort
             r = svc.query_vulnerabilities_combined(**kwargs)
             if r["status_code"] != 200:
-                return {"success": False, "error": format_api_error(r, "Failed to query vulnerabilities combined", operation="query_vulnerabilities_combined")}
+                return {
+                    "success": False,
+                    "error": format_api_error(r, "Failed to query vulnerabilities combined", operation="query_vulnerabilities_combined"),
+                }
             body = r.get("body", {})
             resources = body.get("resources", [])
             meta = body.get("meta", {}).get("pagination", {})
