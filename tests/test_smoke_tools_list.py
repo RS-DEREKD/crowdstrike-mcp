@@ -117,6 +117,7 @@ def _patch_falconpy():
             CloudSecurityDetections=MagicMock(),
             CloudSecurityAssets=MagicMock(),
             APIHarnessV2=MagicMock(),
+            HARNESS_AVAILABLE=True,
         ),
         patch.multiple("crowdstrike_mcp.modules.correlation", CorrelationRules=MagicMock(), APIHarnessV2=MagicMock()),
         patch.multiple("crowdstrike_mcp.modules.hosts", Hosts=MagicMock()),
