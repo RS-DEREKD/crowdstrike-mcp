@@ -153,6 +153,16 @@ class RTRModule(BaseModule):
                 "~/.config/falcon/rtr_audit.log."
             ),
         )
+        self._add_tool(
+            server,
+            self.rtr_check_command_status,
+            name="rtr_check_command_status",
+            description=(
+                "Poll a cloud_request_id returned by rtr_execute_command until "
+                "complete:true, then return stdout/stderr. RTR commands are "
+                "async; first check usually returns complete:false — poll again."
+            ),
+        )
 
     # ------------------------------------------------------------------
     # Tools
@@ -282,6 +292,35 @@ class RTRModule(BaseModule):
         lines.append(
             "Poll rtr_check_command_status(cloud_request_id, session_id) for output."
         )
+        return format_text_response("\n".join(lines), raw=True)
+
+    async def rtr_check_command_status(
+        self,
+        cloud_request_id: Annotated[str, "Cloud request ID returned by rtr_execute_command"],
+        session_id: Annotated[str, "RTR session ID the command ran in"],
+    ) -> str:
+        """Poll a submitted RTR command for completion + stdout/stderr."""
+        result = self._check_command_status(
+            cloud_request_id=cloud_request_id, session_id=session_id
+        )
+        if not result.get("success"):
+            return format_text_response(
+                f"Failed to check RTR command status: {result.get('error')}", raw=True
+            )
+        r = result["resource"]
+        complete = bool(r.get("complete", False))
+        stdout = r.get("stdout", "") or ""
+        stderr = r.get("stderr", "") or ""
+        header = "RTR command complete" if complete else "RTR command pending (not complete)"
+        lines = [header, f"  cloud_request_id: {cloud_request_id}", ""]
+        if stdout:
+            lines.append("--- stdout ---")
+            lines.append(stdout)
+        if stderr:
+            lines.append("--- stderr ---")
+            lines.append(stderr)
+        if not stdout and not stderr:
+            lines.append("(no output yet)")
         return format_text_response("\n".join(lines), raw=True)
 
     # ------------------------------------------------------------------
@@ -421,6 +460,30 @@ class RTRModule(BaseModule):
                 status_code=0,
             )
             return {"success": False, "error": f"Error executing RTR command: {e}"}
+
+    def _check_command_status(self, cloud_request_id: str, session_id: str):
+        if not cloud_request_id:
+            return {"success": False, "error": "cloud_request_id is required"}
+        if not session_id:
+            return {"success": False, "error": "session_id is required"}
+        try:
+            svc = self._service(RealTimeResponse)
+            r = svc.check_active_responder_command_status(
+                cloud_request_id=cloud_request_id, session_id=session_id
+            )
+            if r["status_code"] != 200:
+                return {
+                    "success": False,
+                    "error": format_api_error(
+                        r,
+                        "Failed to check RTR command status",
+                        operation="RTR_CheckActiveResponderCommandStatus",
+                    ),
+                }
+            resources = r.get("body", {}).get("resources", [])
+            return {"success": True, "resource": resources[0] if resources else {}}
+        except Exception as e:
+            return {"success": False, "error": f"Error checking RTR command status: {e}"}
 
     # ------------------------------------------------------------------
     # Allowlist + audit helpers

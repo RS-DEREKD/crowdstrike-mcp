@@ -391,3 +391,97 @@ class TestRTRExecuteCommand:
             entry = json.loads(f.readlines()[0])
         assert entry["result"] == "failure"
         assert entry["api_response_code"] == 500
+
+
+class TestRTRCheckCommandStatus:
+    def test_returns_stdout_when_complete(self, rtr_module):
+        rtr_module.falcon.check_active_responder_command_status.return_value = {
+            "status_code": 200,
+            "body": {
+                "resources": [
+                    {
+                        "complete": True,
+                        "stdout": "PID   CMD\n1234  notepad.exe\n",
+                        "stderr": "",
+                        "task_id": "req-42",
+                    }
+                ]
+            },
+        }
+        result = asyncio.run(
+            rtr_module.rtr_check_command_status(
+                cloud_request_id="req-42", session_id="sess-abc"
+            )
+        )
+        assert "notepad.exe" in result
+        assert "complete" in result.lower()
+
+    def test_reports_pending_when_not_complete(self, rtr_module):
+        rtr_module.falcon.check_active_responder_command_status.return_value = {
+            "status_code": 200,
+            "body": {"resources": [{"complete": False, "stdout": "", "stderr": ""}]},
+        }
+        result = asyncio.run(
+            rtr_module.rtr_check_command_status(
+                cloud_request_id="req-42", session_id="sess-abc"
+            )
+        )
+        assert "pending" in result.lower() or "not complete" in result.lower()
+
+    def test_surfaces_stderr_when_present(self, rtr_module):
+        rtr_module.falcon.check_active_responder_command_status.return_value = {
+            "status_code": 200,
+            "body": {
+                "resources": [
+                    {"complete": True, "stdout": "", "stderr": "Access denied"}
+                ]
+            },
+        }
+        result = asyncio.run(
+            rtr_module.rtr_check_command_status(
+                cloud_request_id="req-42", session_id="sess-abc"
+            )
+        )
+        assert "Access denied" in result
+
+    def test_requires_cloud_request_id(self, rtr_module):
+        result = asyncio.run(
+            rtr_module.rtr_check_command_status(
+                cloud_request_id="", session_id="sess-abc"
+            )
+        )
+        assert "cloud_request_id" in result.lower()
+
+    def test_requires_session_id(self, rtr_module):
+        result = asyncio.run(
+            rtr_module.rtr_check_command_status(
+                cloud_request_id="req-42", session_id=""
+            )
+        )
+        assert "session_id" in result.lower()
+
+    def test_passes_both_args(self, rtr_module):
+        rtr_module.falcon.check_active_responder_command_status.return_value = {
+            "status_code": 200,
+            "body": {"resources": [{"complete": True, "stdout": "ok"}]},
+        }
+        asyncio.run(
+            rtr_module.rtr_check_command_status(
+                cloud_request_id="req-42", session_id="sess-abc"
+            )
+        )
+        kwargs = rtr_module.falcon.check_active_responder_command_status.call_args.kwargs
+        assert kwargs["cloud_request_id"] == "req-42"
+        assert kwargs["session_id"] == "sess-abc"
+
+    def test_handles_api_error(self, rtr_module):
+        rtr_module.falcon.check_active_responder_command_status.return_value = {
+            "status_code": 404,
+            "body": {"errors": [{"message": "Not found"}]},
+        }
+        result = asyncio.run(
+            rtr_module.rtr_check_command_status(
+                cloud_request_id="req-42", session_id="sess-abc"
+            )
+        )
+        assert "failed" in result.lower()
