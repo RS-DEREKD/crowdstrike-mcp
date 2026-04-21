@@ -100,3 +100,36 @@ class TestEdgeTypeCache:
         second = cache.read()
         assert "v2" in second
         assert state["calls"] == 2
+
+
+@pytest.fixture
+def threatgraph_module(mock_client):
+    """ThreatGraphModule with ThreatGraph service mocked."""
+    with patch("crowdstrike_mcp.modules.threat_graph.ThreatGraph") as MockTG:
+        mock_tg = MagicMock()
+        MockTG.return_value = mock_tg
+        from crowdstrike_mcp.modules.threat_graph import ThreatGraphModule
+
+        module = ThreatGraphModule(mock_client)
+        module._service = lambda cls: mock_tg
+        module.falcon = mock_tg
+        return module
+
+
+class TestThreatGraphModuleScaffold:
+    """Module loads, registers expected resource URI, inherits BaseModule."""
+
+    def test_module_subclasses_base(self, threatgraph_module):
+        from crowdstrike_mcp.modules.base import BaseModule
+        assert isinstance(threatgraph_module, BaseModule)
+
+    def test_registers_edge_types_resource(self, threatgraph_module):
+        server = MagicMock()
+        server.resource.return_value = lambda fn: fn
+        threatgraph_module.register_resources(server)
+        assert "falcon://reference/threatgraph-edge-types" in threatgraph_module.resources
+
+    def test_auto_discovery_finds_class(self):
+        from crowdstrike_mcp.registry import discover_module_classes
+        names = [c.__name__ for c in discover_module_classes()]
+        assert "ThreatGraphModule" in names
