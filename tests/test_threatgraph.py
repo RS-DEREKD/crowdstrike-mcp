@@ -186,27 +186,18 @@ class TestThreatGraphGetVertices:
     def test_returns_vertex_metadata(self, threatgraph_module):
         threatgraph_module.falcon.get_vertices_v2.return_value = {
             "status_code": 200,
-            "body": {"resources": [
-                {"id": "pid:aaa:111", "vertex_type": "process", "properties": {"name": "rclone.exe"}}
-            ]},
+            "body": {"resources": [{"id": "pid:aaa:111", "vertex_type": "process", "properties": {"name": "rclone.exe"}}]},
         }
-        result = asyncio.run(
-            threatgraph_module.threatgraph_get_vertices(
-                ids=["pid:aaa:111"], vertex_type="process"
-            )
-        )
+        result = asyncio.run(threatgraph_module.threatgraph_get_vertices(ids=["pid:aaa:111"], vertex_type="process"))
         assert "pid:aaa:111" in result
         assert "rclone.exe" in result
 
     def test_passes_args_to_falconpy(self, threatgraph_module):
         threatgraph_module.falcon.get_vertices_v2.return_value = {
-            "status_code": 200, "body": {"resources": []},
+            "status_code": 200,
+            "body": {"resources": []},
         }
-        asyncio.run(
-            threatgraph_module.threatgraph_get_vertices(
-                ids=["pid:aaa:111"], vertex_type="process", scope="customer", nano=True
-            )
-        )
+        asyncio.run(threatgraph_module.threatgraph_get_vertices(ids=["pid:aaa:111"], vertex_type="process", scope="customer", nano=True))
         kwargs = threatgraph_module.falcon.get_vertices_v2.call_args.kwargs
         assert kwargs["ids"] == ["pid:aaa:111"]
         assert kwargs["vertex_type"] == "process"
@@ -215,20 +206,15 @@ class TestThreatGraphGetVertices:
 
     def test_default_scope_is_device(self, threatgraph_module):
         threatgraph_module.falcon.get_vertices_v2.return_value = {
-            "status_code": 200, "body": {"resources": []},
+            "status_code": 200,
+            "body": {"resources": []},
         }
-        asyncio.run(
-            threatgraph_module.threatgraph_get_vertices(
-                ids=["x"], vertex_type="process"
-            )
-        )
+        asyncio.run(threatgraph_module.threatgraph_get_vertices(ids=["x"], vertex_type="process"))
         kwargs = threatgraph_module.falcon.get_vertices_v2.call_args.kwargs
         assert kwargs["scope"] == "device"
 
     def test_requires_ids(self, threatgraph_module):
-        result = asyncio.run(
-            threatgraph_module.threatgraph_get_vertices(ids=[], vertex_type="process")
-        )
+        result = asyncio.run(threatgraph_module.threatgraph_get_vertices(ids=[], vertex_type="process"))
         assert "ids" in result.lower() or "required" in result.lower()
 
     def test_403_includes_scope_guidance(self, threatgraph_module):
@@ -236,11 +222,7 @@ class TestThreatGraphGetVertices:
             "status_code": 403,
             "body": {"errors": [{"message": "Forbidden"}]},
         }
-        result = asyncio.run(
-            threatgraph_module.threatgraph_get_vertices(
-                ids=["pid:aaa:111"], vertex_type="process"
-            )
-        )
+        result = asyncio.run(threatgraph_module.threatgraph_get_vertices(ids=["pid:aaa:111"], vertex_type="process"))
         assert "threatgraph:read" in result.lower() or "threatgraph" in result.lower()
 
 
@@ -248,26 +230,26 @@ class TestThreatGraphGetEdges:
     def test_returns_edges(self, threatgraph_module):
         threatgraph_module.falcon.get_edges.return_value = {
             "status_code": 200,
-            "body": {"resources": [
-                {"source_vertex_id": "pid:aaa:111", "target_vertex_id": "pid:bbb:222"}
-            ]},
+            "body": {"resources": [{"source_vertex_id": "pid:aaa:111", "target_vertex_id": "pid:bbb:222"}]},
         }
-        result = asyncio.run(
-            threatgraph_module.threatgraph_get_edges(
-                ids=["pid:aaa:111"], edge_type="wrote_file"
-            )
-        )
+        result = asyncio.run(threatgraph_module.threatgraph_get_edges(ids=["pid:aaa:111"], edge_type="wrote_file"))
         assert "pid:aaa:111" in result
         assert "pid:bbb:222" in result
 
     def test_passes_args_to_falconpy(self, threatgraph_module):
         threatgraph_module.falcon.get_edges.return_value = {
-            "status_code": 200, "body": {"resources": []},
+            "status_code": 200,
+            "body": {"resources": []},
         }
         asyncio.run(
             threatgraph_module.threatgraph_get_edges(
-                ids=["x"], edge_type="wrote_file", direction="primary",
-                scope="customer", limit=50, offset="tok", nano=True,
+                ids=["x"],
+                edge_type="wrote_file",
+                direction="primary",
+                scope="customer",
+                limit=50,
+                offset="tok",
+                nano=True,
             )
         )
         kwargs = threatgraph_module.falcon.get_edges.call_args.kwargs
@@ -281,30 +263,24 @@ class TestThreatGraphGetEdges:
 
     def test_default_limit_is_100(self, threatgraph_module):
         threatgraph_module.falcon.get_edges.return_value = {
-            "status_code": 200, "body": {"resources": []},
+            "status_code": 200,
+            "body": {"resources": []},
         }
-        asyncio.run(
-            threatgraph_module.threatgraph_get_edges(ids=["x"], edge_type="wrote_file")
-        )
+        asyncio.run(threatgraph_module.threatgraph_get_edges(ids=["x"], edge_type="wrote_file"))
         kwargs = threatgraph_module.falcon.get_edges.call_args.kwargs
         assert kwargs["limit"] == 100
 
     def test_limit_above_1000_rejected_before_api_call(self, threatgraph_module):
-        result = asyncio.run(
-            threatgraph_module.threatgraph_get_edges(
-                ids=["x"], edge_type="wrote_file", limit=1001
-            )
-        )
+        result = asyncio.run(threatgraph_module.threatgraph_get_edges(ids=["x"], edge_type="wrote_file", limit=1001))
         assert threatgraph_module.falcon.get_edges.call_count == 0
         assert "1000" in result or "limit" in result.lower()
 
     def test_direction_omitted_when_none(self, threatgraph_module):
         threatgraph_module.falcon.get_edges.return_value = {
-            "status_code": 200, "body": {"resources": []},
+            "status_code": 200,
+            "body": {"resources": []},
         }
-        asyncio.run(
-            threatgraph_module.threatgraph_get_edges(ids=["x"], edge_type="wrote_file")
-        )
+        asyncio.run(threatgraph_module.threatgraph_get_edges(ids=["x"], edge_type="wrote_file"))
         kwargs = threatgraph_module.falcon.get_edges.call_args.kwargs
         assert "direction" not in kwargs
 
@@ -313,9 +289,7 @@ class TestThreatGraphGetEdges:
             "status_code": 400,
             "body": {"errors": [{"message": "invalid edge_type 'bogus'"}]},
         }
-        result = asyncio.run(
-            threatgraph_module.threatgraph_get_edges(ids=["x"], edge_type="bogus")
-        )
+        result = asyncio.run(threatgraph_module.threatgraph_get_edges(ids=["x"], edge_type="bogus"))
         assert "threatgraph_get_edge_types" in result or "threatgraph-edge-types" in result
 
 
@@ -325,21 +299,22 @@ class TestThreatGraphGetRanOn:
             "status_code": 200,
             "body": {"resources": [{"aid": "host-1", "id": "pid:host-1:123"}]},
         }
-        result = asyncio.run(
-            threatgraph_module.threatgraph_get_ran_on(
-                value="1.2.3.4", type="ip_address"
-            )
-        )
+        result = asyncio.run(threatgraph_module.threatgraph_get_ran_on(value="1.2.3.4", type="ip_address"))
         assert "host-1" in result
 
     def test_passes_args_to_falconpy(self, threatgraph_module):
         threatgraph_module.falcon.get_ran_on.return_value = {
-            "status_code": 200, "body": {"resources": []},
+            "status_code": 200,
+            "body": {"resources": []},
         }
         asyncio.run(
             threatgraph_module.threatgraph_get_ran_on(
-                value="abc123", type="hash_sha256",
-                scope="customer", limit=50, offset="tok", nano=True,
+                value="abc123",
+                type="hash_sha256",
+                scope="customer",
+                limit=50,
+                offset="tok",
+                nano=True,
             )
         )
         kwargs = threatgraph_module.falcon.get_ran_on.call_args.kwargs
@@ -352,28 +327,21 @@ class TestThreatGraphGetRanOn:
 
     def test_default_limit_and_scope(self, threatgraph_module):
         threatgraph_module.falcon.get_ran_on.return_value = {
-            "status_code": 200, "body": {"resources": []},
+            "status_code": 200,
+            "body": {"resources": []},
         }
-        asyncio.run(
-            threatgraph_module.threatgraph_get_ran_on(value="x", type="domain")
-        )
+        asyncio.run(threatgraph_module.threatgraph_get_ran_on(value="x", type="domain"))
         kwargs = threatgraph_module.falcon.get_ran_on.call_args.kwargs
         assert kwargs["limit"] == 100
         assert kwargs["scope"] == "device"
 
     def test_limit_above_1000_rejected(self, threatgraph_module):
-        result = asyncio.run(
-            threatgraph_module.threatgraph_get_ran_on(
-                value="x", type="domain", limit=2000
-            )
-        )
+        result = asyncio.run(threatgraph_module.threatgraph_get_ran_on(value="x", type="domain", limit=2000))
         assert threatgraph_module.falcon.get_ran_on.call_count == 0
         assert "1000" in result or "limit" in result.lower()
 
     def test_requires_value_and_type(self, threatgraph_module):
-        result = asyncio.run(
-            threatgraph_module.threatgraph_get_ran_on(value="", type="domain")
-        )
+        result = asyncio.run(threatgraph_module.threatgraph_get_ran_on(value="", type="domain"))
         assert "value" in result.lower() or "required" in result.lower()
 
 
@@ -381,25 +349,23 @@ class TestThreatGraphGetSummary:
     def test_returns_summary(self, threatgraph_module):
         threatgraph_module.falcon.get_summary.return_value = {
             "status_code": 200,
-            "body": {"resources": [
-                {"id": "pid:aaa:111", "summary": "rclone.exe -> cloudflare.com"}
-            ]},
+            "body": {"resources": [{"id": "pid:aaa:111", "summary": "rclone.exe -> cloudflare.com"}]},
         }
-        result = asyncio.run(
-            threatgraph_module.threatgraph_get_summary(
-                ids=["pid:aaa:111"], vertex_type="process"
-            )
-        )
+        result = asyncio.run(threatgraph_module.threatgraph_get_summary(ids=["pid:aaa:111"], vertex_type="process"))
         assert "pid:aaa:111" in result
         assert "rclone.exe" in result
 
     def test_passes_args_to_falconpy(self, threatgraph_module):
         threatgraph_module.falcon.get_summary.return_value = {
-            "status_code": 200, "body": {"resources": []},
+            "status_code": 200,
+            "body": {"resources": []},
         }
         asyncio.run(
             threatgraph_module.threatgraph_get_summary(
-                ids=["x"], vertex_type="process", scope="customer", nano=True,
+                ids=["x"],
+                vertex_type="process",
+                scope="customer",
+                nano=True,
             )
         )
         kwargs = threatgraph_module.falcon.get_summary.call_args.kwargs
@@ -409,9 +375,7 @@ class TestThreatGraphGetSummary:
         assert kwargs["nano"] is True
 
     def test_requires_ids(self, threatgraph_module):
-        result = asyncio.run(
-            threatgraph_module.threatgraph_get_summary(ids=[], vertex_type="process")
-        )
+        result = asyncio.run(threatgraph_module.threatgraph_get_summary(ids=[], vertex_type="process"))
         assert "ids" in result.lower() or "required" in result.lower()
 
 

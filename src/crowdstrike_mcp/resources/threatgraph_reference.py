@@ -39,7 +39,7 @@ class ThreatGraphEdgeTypeCache:
         status = response.get("status_code")
         if status != 200:
             errors = (response.get("body") or {}).get("errors") or []
-            detail = (errors[0].get("message") if errors else f"HTTP {status}")
+            detail = errors[0].get("message") if errors else f"HTTP {status}"
             return FETCH_FAILURE_BODY.format(detail=detail)
         resources = (response.get("body") or {}).get("resources") or []
         self._cached = self._format(resources)
@@ -65,7 +65,5 @@ class ThreatGraphEdgeTypeCache:
             else:
                 lines.append(f"- `{item!r}`")
         lines.append("")
-        lines.append(
-            "Pass any of these as the `edge_type` argument to `threatgraph_get_edges`."
-        )
+        lines.append("Pass any of these as the `edge_type` argument to `threatgraph_get_edges`.")
         return "\n".join(lines)

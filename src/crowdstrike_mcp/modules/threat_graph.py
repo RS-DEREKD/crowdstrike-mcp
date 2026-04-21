@@ -160,11 +160,12 @@ class ThreatGraphModule(BaseModule):
         try:
             falcon = self._service(ThreatGraph)
             response = falcon.get_vertices_v2(
-                ids=ids, vertex_type=vertex_type, scope=scope, nano=nano,
+                ids=ids,
+                vertex_type=vertex_type,
+                scope=scope,
+                nano=nano,
             )
-            return _handle_list_response(
-                response, "get vertices", "entities_vertices_getv2", "Threat Graph Vertices"
-            )
+            return _handle_list_response(response, "get vertices", "entities_vertices_getv2", "Threat Graph Vertices")
         except Exception as e:
             return format_text_response(f"Failed to get vertices: {e}", raw=True)
 
@@ -187,8 +188,7 @@ class ThreatGraphModule(BaseModule):
             return format_text_response("Failed: edge_type is required", raw=True)
         if limit > self._MAX_LIMIT:
             return format_text_response(
-                f"Failed: limit={limit} exceeds max {self._MAX_LIMIT}. "
-                f"Page through results using the offset argument.",
+                f"Failed: limit={limit} exceeds max {self._MAX_LIMIT}. Page through results using the offset argument.",
                 raw=True,
             )
         kwargs = {
@@ -212,9 +212,7 @@ class ThreatGraphModule(BaseModule):
                 "Threat Graph Edges",
                 status_hints={
                     400: (
-                        "\n\nHint: call `threatgraph_get_edge_types` or read "
-                        "`falcon://reference/threatgraph-edge-types` for the valid "
-                        "edge_type values."
+                        "\n\nHint: call `threatgraph_get_edge_types` or read `falcon://reference/threatgraph-edge-types` for the valid edge_type values."
                     )
                 },
             )
@@ -237,22 +235,22 @@ class ThreatGraphModule(BaseModule):
             return format_text_response("Failed: type is required", raw=True)
         if limit > self._MAX_LIMIT:
             return format_text_response(
-                f"Failed: limit={limit} exceeds max {self._MAX_LIMIT}. "
-                f"Page through results using the offset argument.",
+                f"Failed: limit={limit} exceeds max {self._MAX_LIMIT}. Page through results using the offset argument.",
                 raw=True,
             )
         kwargs = {
-            "value": value, "type": type, "scope": scope,
-            "limit": limit, "nano": nano,
+            "value": value,
+            "type": type,
+            "scope": scope,
+            "limit": limit,
+            "nano": nano,
         }
         if offset:
             kwargs["offset"] = offset
         try:
             falcon = self._service(ThreatGraph)
             response = falcon.get_ran_on(**kwargs)
-            return _handle_list_response(
-                response, "get ran_on", "combined_ran_on_get", "Threat Graph Ran-On"
-            )
+            return _handle_list_response(response, "get ran_on", "combined_ran_on_get", "Threat Graph Ran-On")
         except Exception as e:
             return format_text_response(f"Failed to get ran_on: {e}", raw=True)
 
@@ -269,11 +267,12 @@ class ThreatGraphModule(BaseModule):
         try:
             falcon = self._service(ThreatGraph)
             response = falcon.get_summary(
-                ids=ids, vertex_type=vertex_type, scope=scope, nano=nano,
+                ids=ids,
+                vertex_type=vertex_type,
+                scope=scope,
+                nano=nano,
             )
-            return _handle_list_response(
-                response, "get summary", "combined_summary_get", "Threat Graph Summary"
-            )
+            return _handle_list_response(response, "get summary", "combined_summary_get", "Threat Graph Summary")
         except Exception as e:
             return format_text_response(f"Failed to get summary: {e}", raw=True)
 
