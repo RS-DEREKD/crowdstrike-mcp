@@ -49,6 +49,17 @@ except ImportError:
     HARNESS_AVAILABLE = False
 
 
+# Falconpy operation id for GET /cloud-security-timeline/entities/cloud-risks-enriched-timeline/v1.
+# Pinned via APIHarnessV2 introspection on 2026-04-21; verified with the installed falconpy version.
+# NOTE: The installed falconpy predates this endpoint — introspection returned no matching
+# operation. The sentinel "__override__" signals that the module-level call site must use
+# APIHarnessV2.override(method="GET",
+#   route="/cloud-security-timeline/entities/cloud-risks-enriched-timeline/v1",
+#   parameters={"id": asset_id})
+# instead of APIHarnessV2.command(TIMELINE_OPERATION_ID, ...).
+TIMELINE_OPERATION_ID = "__override__"
+
+
 class CloudSecurityModule(BaseModule):
     """Cloud security posture and detection data."""
 
