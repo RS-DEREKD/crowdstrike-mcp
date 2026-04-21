@@ -381,3 +381,100 @@ class TestTimelineInvestigation:
         assert "error" in result
         # We bailed after the first call
         assert idp_module.falcon.graphql.call_count == 1
+
+
+class TestRelationshipInvestigation:
+    def test_depth_one_query_has_no_nesting(self, idp_module):
+        idp_module.falcon.graphql.return_value = {
+            "status_code": 200,
+            "body": {"data": {"entities": {"nodes": []}}},
+        }
+        idp_module._analyze_relationships_batch(
+            ["e1"], {"relationship_depth": 1, "include_risk_context": True, "limit": 50}
+        )
+        q = idp_module.falcon.graphql.call_args.kwargs["body"]["query"]
+        # depth=1 still contains at least one associations block
+        assert q.count("associations {") >= 1
+
+    def test_depth_three_nests_three_levels(self, idp_module):
+        idp_module.falcon.graphql.return_value = {
+            "status_code": 200,
+            "body": {"data": {"entities": {"nodes": []}}},
+        }
+        idp_module._analyze_relationships_batch(
+            ["e1"], {"relationship_depth": 3, "include_risk_context": True, "limit": 50}
+        )
+        q3 = idp_module.falcon.graphql.call_args.kwargs["body"]["query"]
+
+        # Reset and build depth=2 query for comparison
+        idp_module.falcon.graphql.reset_mock()
+        idp_module._analyze_relationships_batch(
+            ["e1"], {"relationship_depth": 2, "include_risk_context": True, "limit": 50}
+        )
+        q2 = idp_module.falcon.graphql.call_args.kwargs["body"]["query"]
+
+        # Reset and build depth=1 query for comparison
+        idp_module.falcon.graphql.reset_mock()
+        idp_module._analyze_relationships_batch(
+            ["e1"], {"relationship_depth": 1, "include_risk_context": True, "limit": 50}
+        )
+        q1 = idp_module.falcon.graphql.call_args.kwargs["body"]["query"]
+
+        # `{nested}` is interpolated into both EntityAssociation and
+        # LocalAdminDomainEntityAssociation fragments at every level (matches
+        # upstream falcon-mcp), so block counts follow 1, 3, 7 — i.e. each
+        # additional level of depth doubles the previous level's new blocks.
+        c1 = q1.count("associations {")
+        c2 = q2.count("associations {")
+        c3 = q3.count("associations {")
+        assert c1 == 1, f"depth=1 expected 1 block, got {c1}"
+        assert c2 == 3, f"depth=2 expected 3 blocks, got {c2}"
+        assert c3 == 7, f"depth=3 expected 7 blocks, got {c3}"
+        # And each depth strictly exceeds the previous — regression guard
+        assert c1 < c2 < c3
+
+    def test_without_risk_context_omits_risk_fields(self, idp_module):
+        idp_module.falcon.graphql.return_value = {
+            "status_code": 200,
+            "body": {"data": {"entities": {"nodes": []}}},
+        }
+        idp_module._analyze_relationships_batch(
+            ["e1"], {"relationship_depth": 2, "include_risk_context": False, "limit": 50}
+        )
+        q = idp_module.falcon.graphql.call_args.kwargs["body"]["query"]
+        assert "riskScore" not in q
+        assert "riskFactors" not in q
+
+    def test_empty_nodes_yields_zero_associations(self, idp_module):
+        idp_module.falcon.graphql.return_value = {
+            "status_code": 200,
+            "body": {"data": {"entities": {"nodes": []}}},
+        }
+        result = idp_module._analyze_relationships_batch(
+            ["e1"], {"relationship_depth": 2, "include_risk_context": True, "limit": 50}
+        )
+        assert result["relationships"][0]["associations"] == []
+        assert result["relationships"][0]["relationship_count"] == 0
+
+    def test_handles_api_error(self, idp_module):
+        idp_module.falcon.graphql.return_value = {
+            "status_code": 403,
+            "body": {"errors": [{"message": "Forbidden"}]},
+        }
+        result = idp_module._analyze_relationships_batch(
+            ["e1"], {"relationship_depth": 2, "include_risk_context": True, "limit": 50}
+        )
+        assert "error" in result
+
+    def test_counts_associations_defensively_when_field_missing(self, idp_module):
+        idp_module.falcon.graphql.return_value = {
+            "status_code": 200,
+            "body": {"data": {"entities": {"nodes": [
+                {"entityId": "e1"}  # no associations field
+            ]}}},
+        }
+        result = idp_module._analyze_relationships_batch(
+            ["e1"], {"relationship_depth": 2, "include_risk_context": True, "limit": 50}
+        )
+        assert result["relationships"][0]["associations"] == []
+        assert result["relationships"][0]["relationship_count"] == 0

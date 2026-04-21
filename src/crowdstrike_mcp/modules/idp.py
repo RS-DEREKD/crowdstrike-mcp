@@ -437,3 +437,87 @@ class IDPModule(BaseModule):
                 "page_info": tl.get("pageInfo", {}) if isinstance(tl.get("pageInfo"), dict) else {},
             })
         return {"timelines": timelines, "entity_count": len(entity_ids)}
+
+    # --------------------------------------------------
+    # relationship_analysis
+    # --------------------------------------------------
+    def _build_relationship_query(
+        self, entity_id: str, depth: int, include_risk_context: bool, limit: int
+    ) -> str:
+        risk_fields = ""
+        if include_risk_context:
+            risk_fields = """
+                riskScore
+                riskScoreSeverity
+                riskFactors { type severity }
+            """
+
+        def associations_block(remaining: int) -> str:
+            if remaining <= 0:
+                return ""
+            nested = associations_block(remaining - 1) if remaining > 1 else ""
+            return f"""
+                associations {{
+                    bindingType
+                    ... on EntityAssociation {{
+                        entity {{
+                            entityId primaryDisplayName secondaryDisplayName type
+                            {risk_fields}
+                            {nested}
+                        }}
+                    }}
+                    ... on LocalAdminLocalUserAssociation {{ accountName }}
+                    ... on LocalAdminDomainEntityAssociation {{
+                        entityType
+                        entity {{
+                            entityId primaryDisplayName secondaryDisplayName type
+                            {risk_fields}
+                            {nested}
+                        }}
+                    }}
+                    ... on GeoLocationAssociation {{
+                        geoLocation {{ country countryCode city cityCode latitude longitude }}
+                    }}
+                }}
+            """
+
+        return f"""
+        query {{
+            entities(entityIds: ["{entity_id}"], first: {limit}) {{
+                nodes {{
+                    entityId primaryDisplayName secondaryDisplayName type
+                    {risk_fields}
+                    {associations_block(depth)}
+                }}
+            }}
+        }}
+        """
+
+    def _analyze_relationships_batch(
+        self, entity_ids: list[str], options: dict[str, Any]
+    ) -> dict[str, Any]:
+        relationships = []
+        depth = options.get("relationship_depth", 2)
+        for eid in entity_ids:
+            query = self._build_relationship_query(
+                entity_id=eid,
+                depth=depth,
+                include_risk_context=options.get("include_risk_context", True),
+                limit=options.get("limit", 50),
+            )
+            result = self._graphql_call(query, context=f"Failed to analyze relationships for '{eid}'")
+            if not result.get("success"):
+                return {"error": result["error"]}
+            nodes = result["data"].get("entities", {}).get("nodes", []) or []
+            if nodes and isinstance(nodes[0], dict):
+                associations = nodes[0].get("associations", [])
+                if not isinstance(associations, list):
+                    associations = []
+            else:
+                associations = []
+            relationships.append({
+                "entity_id": eid,
+                "associations": associations,
+                "relationship_count": len(associations),
+            })
+        return {"relationships": relationships, "entity_count": len(entity_ids)}
