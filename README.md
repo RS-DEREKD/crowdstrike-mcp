@@ -4,6 +4,7 @@ A modular, multi-transport [Model Context Protocol](https://modelcontextprotocol
 
 **v3.0** — Modular auto-discovery architecture with 58 tools across 12 modules.
 
+
 ---
 
 ## Architecture
@@ -79,6 +80,7 @@ crowdstrike-mcp/
 │   │   ├── case_management.py         # Case lifecycle management
 │   │   ├── cao_hunting.py             # Intelligence queries + hunting guides
 │   │   ├── spotlight.py               # Vulnerability evaluation logic
+│   │   ├── idp.py                     # Identity Protection (GraphQL triage)
 │   │   ├── response.py               # Host containment actions
 │   │   └── response_store.py         # Stored response retrieval
 │   │
@@ -300,6 +302,12 @@ wins. Every `rtr_execute_command` invocation is audited to
 | `spotlight_get_remediations` | Remediation instructions (patches, config changes) by remediation ID |
 | `spotlight_host_vulns` | Triage shortcut: all open vulns for a specific host by device_id |
 
+### Identity Protection — `modules/idp.py`
+
+| Tool | Description |
+|------|-------------|
+| `identity_investigate_entity` | One-call identity triage — resolve user/device by name/email/IP/domain, return risk + timeline + relationships. |
+
 ### Cloud Registration — `modules/cloud_registration.py`
 
 | Tool | Description |
@@ -404,7 +412,7 @@ crowdstrike-mcp --modules cloudsecurity,cloudregistration
 crowdstrike-mcp --modules ngsiem,correlation
 ```
 
-**Available module names:** `alerts`, `caohunting`, `casemanagement`, `cloudsecurity`, `cloudregistration`, `correlation`, `hosts`, `ngsiem`, `response`, `responsestore`, `spotlight`
+**Available module names:** `alerts`, `caohunting`, `casemanagement`, `cloudsecurity`, `cloudregistration`, `correlation`, `hosts`, `idp`, `ngsiem`, `response`, `responsestore`, `spotlight`
 
 ---
 
@@ -545,7 +553,7 @@ Responses exceeding 20KB are automatically written to temporary files with a tru
 
 ### Shared OAuth2 Session
 
-All modules share a single `OAuth2` token through `FalconClient.auth_object`. This means one authentication handshake for all 51 tools, regardless of how many FalconPy service classes are instantiated.
+All modules share a single `OAuth2` token through `FalconClient.auth_object`. This means one authentication handshake for all 52 tools, regardless of how many FalconPy service classes are instantiated.
 
 ---
 
@@ -582,7 +590,8 @@ All modules share a single `OAuth2` token through `FalconClient.auth_object`. Th
 | `case_add_event_evidence` | Case Management | `cases:write` | |
 | `case_add_tags` | Case Management | `cases:write` | |
 | `case_delete_tags` | Case Management | `cases:write` | |
-| `case_upload_file` | Case Management | `cases:write` | |
+| `case_upload_file` | Case Management | `cases:write` |
+| `identity_investigate_entity` | Identity Protection | `identity-protection-assessment:read`, `identity-protection-detections:read`, `identity-protection-entities:read`, `identity-protection-timeline:read`, `identity-protection-graphql:write` | Read-only GraphQL query; `graphql:write` required by API surface for all GraphQL calls | |
 
 ### Minimum Scopes by Workflow
 
@@ -644,3 +653,9 @@ class YourModule(BaseModule):
 - The `update_alert_status` tool is the only write operation against live alert state
 - `correlation_update_rule` can enable/disable rules but cannot create or delete them
 - Defensive security focus only — no offensive capabilities
+
+---
+
+## Acknowledgements
+
+Contains a port of the IdentityProtection module from CrowdStrike's falcon-mcp (MIT). See THIRD_PARTY_NOTICES.md.
