@@ -50,14 +50,13 @@ except ImportError:
 
 
 # Falconpy operation id for GET /cloud-security-timeline/entities/cloud-risks-enriched-timeline/v1.
-# Pinned via APIHarnessV2 introspection on 2026-04-21; verified with the installed falconpy version.
-# NOTE: The installed falconpy predates this endpoint — introspection returned no matching
-# operation. The sentinel "__override__" signals that the module-level call site must use
-# APIHarnessV2.override(method="GET",
-#   route="/cloud-security-timeline/entities/cloud-risks-enriched-timeline/v1",
-#   parameters={"id": asset_id})
-# instead of APIHarnessV2.command(TIMELINE_OPERATION_ID, ...).
-TIMELINE_OPERATION_ID = "__override__"
+# As of falconpy 1.6.1 the endpoint is not wrapped as a native operation, so we call it via
+# APIHarnessV2.command(override=TIMELINE_OVERRIDE, ...). The operation id below is the
+# anticipated swagger operationId used for scope lookup; when falconpy adds the native
+# operation (tracked as follow-up in the FR08 design doc), replace the override call
+# with `harness.command(TIMELINE_OPERATION_ID, parameters=...)`.
+TIMELINE_OPERATION_ID = "GetCloudRisksEnrichedTimeline"
+TIMELINE_OVERRIDE = "GET,/cloud-security-timeline/entities/cloud-risks-enriched-timeline/v1"
 
 
 class CloudSecurityModule(BaseModule):

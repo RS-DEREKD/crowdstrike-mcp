@@ -65,7 +65,7 @@ OPERATION_SCOPES = {
     "entities_retrieve_rtr_recent_file_post_v1": ["cases:read"],
     # Cloud Security
     "combined_cloud_risks": ["cloud-security:read"],
-    "__override__": ["cloud-security:read"],
+    "GetCloudRisksEnrichedTimeline": ["cloud-security:read"],
     "query_iom_entities": ["cloud-security-detections:read"],
     "get_iom_entities": ["cloud-security-detections:read"],
     "query_assets": ["cloud-security-assets:read"],
