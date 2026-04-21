@@ -247,3 +247,147 @@ class TestRTRPulseSession:
         }
         result = asyncio.run(rtr_module.rtr_pulse_session(session_id="sess-abc"))
         assert "failed" in result.lower()
+
+
+class TestRTRExecuteCommand:
+    def test_executes_allowed_command(self, rtr_module):
+        rtr_module.falcon.execute_active_responder_command.return_value = {
+            "status_code": 201,
+            "body": {
+                "resources": [
+                    {
+                        "cloud_request_id": "req-42",
+                        "session_id": "sess-abc",
+                        "queued_command_offline": False,
+                    }
+                ]
+            },
+        }
+        result = asyncio.run(
+            rtr_module.rtr_execute_command(
+                session_id="sess-abc",
+                device_id="dev-1",
+                base_command="ls",
+                command_string="ls C:\\Users",
+            )
+        )
+        assert "req-42" in result
+        rtr_module.falcon.execute_active_responder_command.assert_called_once()
+
+    def test_rejects_unlisted_command_before_api_call(self, rtr_module):
+        result = asyncio.run(
+            rtr_module.rtr_execute_command(
+                session_id="s",
+                device_id="d",
+                base_command="tasklist",
+                command_string="tasklist",
+            )
+        )
+        assert "allowlist" in result.lower()
+        rtr_module.falcon.execute_active_responder_command.assert_not_called()
+
+    def test_rejects_hard_denied_command(self, rtr_module):
+        result = asyncio.run(
+            rtr_module.rtr_execute_command(
+                session_id="s",
+                device_id="d",
+                base_command="rm",
+                command_string="rm -rf /",
+            )
+        )
+        assert "hard-denied" in result.lower()
+        rtr_module.falcon.execute_active_responder_command.assert_not_called()
+
+    def test_rejects_when_command_string_does_not_start_with_base(self, rtr_module):
+        result = asyncio.run(
+            rtr_module.rtr_execute_command(
+                session_id="s",
+                device_id="d",
+                base_command="ls",
+                command_string="ps aux",
+            )
+        )
+        assert "start with" in result.lower()
+        rtr_module.falcon.execute_active_responder_command.assert_not_called()
+
+    def test_writes_audit_log_on_success(self, rtr_module):
+        rtr_module.falcon.execute_active_responder_command.return_value = {
+            "status_code": 201,
+            "body": {
+                "resources": [
+                    {"cloud_request_id": "req-42", "session_id": "sess-abc"}
+                ]
+            },
+        }
+        asyncio.run(
+            rtr_module.rtr_execute_command(
+                session_id="sess-abc",
+                device_id="dev-1",
+                base_command="ps",
+                command_string="ps",
+            )
+        )
+        assert os.path.exists(rtr_module._audit_log_path)
+        with open(rtr_module._audit_log_path) as f:
+            lines = f.readlines()
+        assert len(lines) == 1
+        entry = json.loads(lines[0])
+        assert entry["tool"] == "rtr_execute_command"
+        assert entry["session_id"] == "sess-abc"
+        assert entry["device_id"] == "dev-1"
+        assert entry["base_command"] == "ps"
+        assert entry["command_string"] == "ps"
+        assert entry["cloud_request_id"] == "req-42"
+        assert entry["result"] == "success"
+        assert entry["api_response_code"] == 201
+
+    def test_writes_audit_log_on_allowlist_rejection(self, rtr_module):
+        asyncio.run(
+            rtr_module.rtr_execute_command(
+                session_id="s",
+                device_id="d",
+                base_command="rm",
+                command_string="rm file",
+            )
+        )
+        assert os.path.exists(rtr_module._audit_log_path)
+        with open(rtr_module._audit_log_path) as f:
+            entry = json.loads(f.readlines()[0])
+        assert entry["result"] == "failure"
+        # 0 indicates the call never reached the API
+        assert entry["api_response_code"] == 0
+
+    def test_passes_all_args_to_falconpy(self, rtr_module):
+        rtr_module.falcon.execute_active_responder_command.return_value = {
+            "status_code": 201, "body": {"resources": [{"cloud_request_id": "r"}]},
+        }
+        asyncio.run(
+            rtr_module.rtr_execute_command(
+                session_id="sess-abc",
+                device_id="dev-1",
+                base_command="reg query",
+                command_string="reg query HKLM\\Software",
+            )
+        )
+        kwargs = rtr_module.falcon.execute_active_responder_command.call_args.kwargs
+        assert kwargs["session_id"] == "sess-abc"
+        assert kwargs["device_id"] == "dev-1"
+        assert kwargs["base_command"] == "reg query"
+        assert kwargs["command_string"] == "reg query HKLM\\Software"
+
+    def test_api_error_is_reported_and_audited(self, rtr_module):
+        rtr_module.falcon.execute_active_responder_command.return_value = {
+            "status_code": 500,
+            "body": {"errors": [{"message": "boom"}]},
+        }
+        result = asyncio.run(
+            rtr_module.rtr_execute_command(
+                session_id="s", device_id="d",
+                base_command="ps", command_string="ps",
+            )
+        )
+        assert "failed" in result.lower()
+        with open(rtr_module._audit_log_path) as f:
+            entry = json.loads(f.readlines()[0])
+        assert entry["result"] == "failure"
+        assert entry["api_response_code"] == 500

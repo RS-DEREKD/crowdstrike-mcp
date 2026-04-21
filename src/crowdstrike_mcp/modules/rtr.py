@@ -140,6 +140,19 @@ class RTRModule(BaseModule):
                 "review between commands."
             ),
         )
+        self._add_tool(
+            server,
+            self.rtr_execute_command,
+            name="rtr_execute_command",
+            description=(
+                "Run a read-only active-responder command on a host (ls, ps, "
+                "reg query, getfile, cat, netstat, ...). Base command must be "
+                "in the allowlist. See falcon://rtr/commands. Returns a "
+                "cloud_request_id — poll rtr_check_command_status for output. "
+                "Every invocation (including rejections) is written to "
+                "~/.config/falcon/rtr_audit.log."
+            ),
+        )
 
     # ------------------------------------------------------------------
     # Tools
@@ -217,6 +230,59 @@ class RTRModule(BaseModule):
             f"Session {s.get('session_id', session_id)} refreshed on {s.get('device_id', '?')}",
             raw=True,
         )
+
+    async def rtr_execute_command(
+        self,
+        session_id: Annotated[str, "RTR session ID (from rtr_init_session)"],
+        device_id: Annotated[str, "Device ID the session is bound to"],
+        base_command: Annotated[
+            str,
+            "Base command (first token only). Must be in the allowlist — see falcon://rtr/commands.",
+        ],
+        command_string: Annotated[
+            str,
+            "Full command as typed. Must start with base_command. Example: 'ls C:\\\\Users'",
+        ],
+    ) -> str:
+        """Run an allowlisted read-only active-responder command on a host."""
+        # Allowlist check happens before any falconpy call; failures are still audited.
+        validation_error = self._validate_command(base_command, command_string)
+        if validation_error:
+            self._write_audit_log(
+                tool="rtr_execute_command",
+                session_id=session_id,
+                device_id=device_id,
+                base_command=base_command,
+                command_string=command_string,
+                cloud_request_id=None,
+                success=False,
+                status_code=0,
+            )
+            return format_text_response(f"Failed: {validation_error}", raw=True)
+
+        result = self._execute_command(
+            session_id=session_id,
+            device_id=device_id,
+            base_command=base_command,
+            command_string=command_string,
+        )
+        if not result.get("success"):
+            return format_text_response(
+                f"Failed to execute RTR command: {result.get('error')}", raw=True
+            )
+        r = result["resource"]
+        lines = [
+            "RTR command submitted.",
+            f"  cloud_request_id: {r.get('cloud_request_id', '?')}",
+            f"  session_id: {r.get('session_id', session_id)}",
+        ]
+        if r.get("queued_command_offline"):
+            lines.append("  queued_command_offline: True (will run on next check-in)")
+        lines.append("")
+        lines.append(
+            "Poll rtr_check_command_status(cloud_request_id, session_id) for output."
+        )
+        return format_text_response("\n".join(lines), raw=True)
 
     # ------------------------------------------------------------------
     # Internal helpers (one per tool)
@@ -300,6 +366,61 @@ class RTRModule(BaseModule):
             }
         except Exception as e:
             return {"success": False, "error": f"Error pulsing RTR session: {e}"}
+
+    def _execute_command(
+        self,
+        session_id: str,
+        device_id: str,
+        base_command: str,
+        command_string: str,
+    ):
+        if not session_id or not device_id:
+            return {"success": False, "error": "session_id and device_id are required"}
+        try:
+            svc = self._service(RealTimeResponse)
+            r = svc.execute_active_responder_command(
+                session_id=session_id,
+                device_id=device_id,
+                base_command=base_command,
+                command_string=command_string,
+            )
+            status = r.get("status_code", 0)
+            resources = r.get("body", {}).get("resources", [])
+            resource = resources[0] if resources else {}
+            cloud_request_id = resource.get("cloud_request_id")
+            success = 200 <= status < 300
+            self._write_audit_log(
+                tool="rtr_execute_command",
+                session_id=session_id,
+                device_id=device_id,
+                base_command=base_command,
+                command_string=command_string,
+                cloud_request_id=cloud_request_id,
+                success=success,
+                status_code=status,
+            )
+            if not success:
+                return {
+                    "success": False,
+                    "error": format_api_error(
+                        r,
+                        "Failed to execute RTR command",
+                        operation="RTR_ExecuteActiveResponderCommand",
+                    ),
+                }
+            return {"success": True, "resource": resource}
+        except Exception as e:
+            self._write_audit_log(
+                tool="rtr_execute_command",
+                session_id=session_id,
+                device_id=device_id,
+                base_command=base_command,
+                command_string=command_string,
+                cloud_request_id=None,
+                success=False,
+                status_code=0,
+            )
+            return {"success": False, "error": f"Error executing RTR command: {e}"}
 
     # ------------------------------------------------------------------
     # Allowlist + audit helpers
