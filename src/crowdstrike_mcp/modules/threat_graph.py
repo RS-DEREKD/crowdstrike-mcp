@@ -49,6 +49,8 @@ EDGE_TYPES_RESOURCE_URI = "falcon://reference/threatgraph-edge-types"
 class ThreatGraphModule(BaseModule):
     """Threat Graph read-only pivots (vertices, edges, ran-on, summary)."""
 
+    _MAX_LIMIT = 1000
+
     def __init__(self, client):
         super().__init__(client)
         if not THREATGRAPH_AVAILABLE:
@@ -168,8 +170,6 @@ class ThreatGraphModule(BaseModule):
             return _handle_list_response(response, "get vertices", "entities_vertices_getv2", "Threat Graph Vertices")
         except Exception as e:
             return format_text_response(f"Failed to get vertices: {e}", raw=True)
-
-    _MAX_LIMIT = 1000
 
     async def threatgraph_get_edges(
         self,

@@ -223,7 +223,7 @@ class TestThreatGraphGetVertices:
             "body": {"errors": [{"message": "Forbidden"}]},
         }
         result = asyncio.run(threatgraph_module.threatgraph_get_vertices(ids=["pid:aaa:111"], vertex_type="process"))
-        assert "threatgraph:read" in result.lower() or "threatgraph" in result.lower()
+        assert "threatgraph:read" in result
 
 
 class TestThreatGraphGetEdges:
@@ -340,9 +340,17 @@ class TestThreatGraphGetRanOn:
         assert threatgraph_module.falcon.get_ran_on.call_count == 0
         assert "1000" in result or "limit" in result.lower()
 
-    def test_requires_value_and_type(self, threatgraph_module):
-        result = asyncio.run(threatgraph_module.threatgraph_get_ran_on(value="", type="domain"))
+    def test_requires_value(self, threatgraph_module):
+        result = asyncio.run(
+            threatgraph_module.threatgraph_get_ran_on(value="", type="domain")
+        )
         assert "value" in result.lower() or "required" in result.lower()
+
+    def test_requires_type(self, threatgraph_module):
+        result = asyncio.run(
+            threatgraph_module.threatgraph_get_ran_on(value="x", type="")
+        )
+        assert "type" in result.lower() or "required" in result.lower()
 
 
 class TestThreatGraphGetSummary:
