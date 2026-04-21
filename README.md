@@ -2,7 +2,7 @@
 
 A modular, multi-transport [Model Context Protocol](https://modelcontextprotocol.io/) server that connects AI assistants to the CrowdStrike Falcon platform. Query NG-SIEM logs, triage alerts, inspect endpoints, manage detection rules, and audit cloud security posture — all through natural language.
 
-**v3.0** — Modular auto-discovery architecture with 51 tools across 11 modules.
+**v3.0** — Modular auto-discovery architecture with 58 tools across 12 modules.
 
 ---
 
@@ -261,6 +261,26 @@ Each alert analysis routes to type-specific enrichment:
 |------|-------------|
 | `host_contain` | Network-isolate a host (write) |
 | `host_lift_containment` | Lift network isolation from a host (write) |
+
+### Real-Time Response (read-only subset) — `modules/rtr.py`
+
+| Tool | Description |
+|------|-------------|
+| `rtr_init_session` | Open an RTR session on a host |
+| `rtr_list_sessions` | List metadata for owned session IDs |
+| `rtr_pulse_session` | Keep-alive ping (resets 10-min idle timeout) |
+| `rtr_execute_command` | Run an allowlisted read-only active-responder command |
+| `rtr_check_command_status` | Poll submitted command for stdout/stderr |
+| `rtr_list_files` | List files pulled via `getfile` |
+| `rtr_get_extracted_file_contents` | Download a pulled file (7z, password `infected`) |
+
+All RTR tools register as read-tier. Safety is enforced by a hardcoded MCP-layer
+command allowlist (`ls, ps, reg query, getfile, cat, env, ipconfig, netstat, cd,
+pwd, filehash, eventlog view, zip, mount, users, history, memdump`) plus a
+never-allowed deny list (`cp, mv, rm, put, runscript, kill, mkdir`). Extend via
+env var `CROWDSTRIKE_MCP_RTR_EXTRA_ALLOWED` (comma-separated) — deny list always
+wins. Every `rtr_execute_command` invocation is audited to
+`~/.config/falcon/rtr_audit.log`.
 
 ### Response Store — `modules/response_store.py`
 

@@ -594,3 +594,28 @@ class TestRTRGetExtractedFileContents:
         )
         # Users must know the archive password to extract
         assert "infected" in result.lower()
+
+
+class TestRTRToolRegistration:
+    def test_all_seven_tools_register_as_read(self, rtr_module):
+        server = MagicMock()
+        server.tool.return_value = lambda fn: fn
+        rtr_module.register_tools(server)
+        expected = {
+            "rtr_init_session",
+            "rtr_list_sessions",
+            "rtr_pulse_session",
+            "rtr_execute_command",
+            "rtr_check_command_status",
+            "rtr_list_files",
+            "rtr_get_extracted_file_contents",
+        }
+        assert expected.issubset(set(rtr_module.tools))
+
+
+class TestRTRResources:
+    def test_registers_commands_guide(self, rtr_module):
+        server = MagicMock()
+        server.resource.return_value = lambda fn: fn
+        rtr_module.register_resources(server)
+        assert "falcon://rtr/commands" in rtr_module.resources
