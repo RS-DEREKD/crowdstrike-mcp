@@ -1,8 +1,23 @@
 """
-NGSIEM Module — executes CQL queries against the search-all repository.
+NGSIEM Module — CQL query execution + read-only introspection.
 
 Tools:
-  ngsiem_query — Execute NGSIEM/CQL query across all CrowdStrike logs
+  ngsiem_query                      — Execute CQL query across all CrowdStrike logs
+  ngsiem_list_saved_queries         — Enumerate saved searches
+  ngsiem_get_saved_query_template   — Fetch one saved search's body + metadata
+  ngsiem_list_lookup_files          — Enumerate lookup files
+  ngsiem_get_lookup_file            — Fetch a lookup file (metadata; content opt-in)
+  ngsiem_list_dashboards            — Enumerate dashboards
+  ngsiem_list_parsers               — Enumerate parsers
+  ngsiem_get_parser                 — Fetch a parser's live config + script
+  ngsiem_list_data_connections      — Enumerate ingestion pipelines
+  ngsiem_get_data_connection        — Fetch one data connection's state
+  ngsiem_get_provisioning_status    — Fetch ingestion health status
+  ngsiem_list_data_connectors       — Enumerate connector types
+  ngsiem_list_connector_configs     — Enumerate connector configuration instances
+
+All tools are read-only. Writes remain with talonctl. get_ingest_token
+is intentionally excluded (credential).
 """
 
 from __future__ import annotations
