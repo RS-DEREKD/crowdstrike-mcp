@@ -162,15 +162,8 @@ class ThreatGraphModule(BaseModule):
             response = falcon.get_vertices_v2(
                 ids=ids, vertex_type=vertex_type, scope=scope, nano=nano,
             )
-            if response.get("status_code") != 200:
-                err = format_api_error(
-                    response,
-                    "Failed to get vertices",
-                    operation="entities_vertices_getv2",
-                )
-                return format_text_response(f"Failed to get vertices: {err}", raw=True)
-            return format_text_response(
-                _render_resources("Threat Graph Vertices", response), raw=True
+            return _handle_list_response(
+                response, "get vertices", "entities_vertices_getv2", "Threat Graph Vertices"
             )
         except Exception as e:
             return format_text_response(f"Failed to get vertices: {e}", raw=True)
@@ -212,22 +205,18 @@ class ThreatGraphModule(BaseModule):
         try:
             falcon = self._service(ThreatGraph)
             response = falcon.get_edges(**kwargs)
-            if response.get("status_code") != 200:
-                err = format_api_error(
-                    response,
-                    "Failed to get edges",
-                    operation="combined_edges_get",
-                )
-                hint = ""
-                if response.get("status_code") == 400:
-                    hint = (
+            return _handle_list_response(
+                response,
+                "get edges",
+                "combined_edges_get",
+                "Threat Graph Edges",
+                status_hints={
+                    400: (
                         "\n\nHint: call `threatgraph_get_edge_types` or read "
                         "`falcon://reference/threatgraph-edge-types` for the valid "
                         "edge_type values."
                     )
-                return format_text_response(f"Failed to get edges: {err}{hint}", raw=True)
-            return format_text_response(
-                _render_resources("Threat Graph Edges", response), raw=True
+                },
             )
         except Exception as e:
             return format_text_response(f"Failed to get edges: {e}", raw=True)
@@ -261,15 +250,8 @@ class ThreatGraphModule(BaseModule):
         try:
             falcon = self._service(ThreatGraph)
             response = falcon.get_ran_on(**kwargs)
-            if response.get("status_code") != 200:
-                err = format_api_error(
-                    response,
-                    "Failed to get ran_on",
-                    operation="combined_ran_on_get",
-                )
-                return format_text_response(f"Failed to get ran_on: {err}", raw=True)
-            return format_text_response(
-                _render_resources("Threat Graph Ran-On", response), raw=True
+            return _handle_list_response(
+                response, "get ran_on", "combined_ran_on_get", "Threat Graph Ran-On"
             )
         except Exception as e:
             return format_text_response(f"Failed to get ran_on: {e}", raw=True)
@@ -289,15 +271,8 @@ class ThreatGraphModule(BaseModule):
             response = falcon.get_summary(
                 ids=ids, vertex_type=vertex_type, scope=scope, nano=nano,
             )
-            if response.get("status_code") != 200:
-                err = format_api_error(
-                    response,
-                    "Failed to get summary",
-                    operation="combined_summary_get",
-                )
-                return format_text_response(f"Failed to get summary: {err}", raw=True)
-            return format_text_response(
-                _render_resources("Threat Graph Summary", response), raw=True
+            return _handle_list_response(
+                response, "get summary", "combined_summary_get", "Threat Graph Summary"
             )
         except Exception as e:
             return format_text_response(f"Failed to get summary: {e}", raw=True)
@@ -325,3 +300,19 @@ def _render_resources(header: str, response: dict) -> str:
     lines.append(json.dumps(resources, indent=2, default=str))
     lines.append("```")
     return "\n".join(lines)
+
+
+def _handle_list_response(
+    response: dict,
+    operation_context: str,
+    operation_code: str,
+    result_header: str,
+    status_hints: dict[int, str] | None = None,
+) -> str:
+    """Render a falconpy list response, or format the error with an optional status-specific hint."""
+    status = response.get("status_code")
+    if status != 200:
+        err = format_api_error(response, f"Failed to {operation_context}", operation=operation_code)
+        hint = (status_hints or {}).get(status, "") if status_hints else ""
+        return format_text_response(f"Failed to {operation_context}: {err}{hint}", raw=True)
+    return format_text_response(_render_resources(result_header, response), raw=True)
