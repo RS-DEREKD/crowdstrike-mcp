@@ -11,22 +11,27 @@ class TestThreatGraphScopes:
 
     def test_entities_vertices_getv2_scope(self):
         from crowdstrike_mcp.common.api_scopes import get_required_scopes
+
         assert get_required_scopes("entities_vertices_getv2") == ["threatgraph:read"]
 
     def test_combined_edges_get_scope(self):
         from crowdstrike_mcp.common.api_scopes import get_required_scopes
+
         assert get_required_scopes("combined_edges_get") == ["threatgraph:read"]
 
     def test_combined_ran_on_get_scope(self):
         from crowdstrike_mcp.common.api_scopes import get_required_scopes
+
         assert get_required_scopes("combined_ran_on_get") == ["threatgraph:read"]
 
     def test_combined_summary_get_scope(self):
         from crowdstrike_mcp.common.api_scopes import get_required_scopes
+
         assert get_required_scopes("combined_summary_get") == ["threatgraph:read"]
 
     def test_queries_edgetypes_get_scope(self):
         from crowdstrike_mcp.common.api_scopes import get_required_scopes
+
         assert get_required_scopes("queries_edgetypes_get") == ["threatgraph:read"]
 
 
@@ -121,6 +126,7 @@ class TestThreatGraphModuleScaffold:
 
     def test_module_subclasses_base(self, threatgraph_module):
         from crowdstrike_mcp.modules.base import BaseModule
+
         assert isinstance(threatgraph_module, BaseModule)
 
     def test_registers_edge_types_resource(self, threatgraph_module):
@@ -131,5 +137,46 @@ class TestThreatGraphModuleScaffold:
 
     def test_auto_discovery_finds_class(self):
         from crowdstrike_mcp.registry import discover_module_classes
+
         names = [c.__name__ for c in discover_module_classes()]
         assert "ThreatGraphModule" in names
+
+
+class TestThreatGraphGetEdgeTypes:
+    def test_returns_edge_types(self, threatgraph_module):
+        threatgraph_module.falcon.get_edge_types.return_value = {
+            "status_code": 200,
+            "body": {"resources": ["wrote_file", "accessed_by_session"]},
+        }
+        result = asyncio.run(threatgraph_module.threatgraph_get_edge_types())
+        assert "wrote_file" in result
+        assert "accessed_by_session" in result
+
+    def test_invalidates_resource_cache(self, threatgraph_module):
+        # Seed the cache
+        threatgraph_module.falcon.get_edge_types.return_value = {
+            "status_code": 200,
+            "body": {"resources": ["old"]},
+        }
+        first_body = threatgraph_module._edge_type_cache.read()
+        assert "old" in first_body
+
+        # Change API response, then call the tool
+        threatgraph_module.falcon.get_edge_types.return_value = {
+            "status_code": 200,
+            "body": {"resources": ["new"]},
+        }
+        asyncio.run(threatgraph_module.threatgraph_get_edge_types())
+
+        # The cache should now reflect the new list on next resource read
+        second_body = threatgraph_module._edge_type_cache.read()
+        assert "new" in second_body
+        assert "old" not in second_body
+
+    def test_handles_api_error(self, threatgraph_module):
+        threatgraph_module.falcon.get_edge_types.return_value = {
+            "status_code": 403,
+            "body": {"errors": [{"message": "Forbidden"}]},
+        }
+        result = asyncio.run(threatgraph_module.threatgraph_get_edge_types())
+        assert "failed" in result.lower() or "forbidden" in result.lower()

@@ -85,6 +85,7 @@ EXPECTED_READ_TOOLS = {
     "rtr_get_extracted_file_contents",
     "get_stored_response",
     "list_stored_responses",
+    "threatgraph_get_edge_types",
 }
 
 EXPECTED_WRITE_TOOLS = {

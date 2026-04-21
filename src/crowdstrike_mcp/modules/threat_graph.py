@@ -33,10 +33,10 @@ try:
 except ImportError:
     THREATGRAPH_AVAILABLE = False
 
-from crowdstrike_mcp.common.errors import format_api_error  # noqa: F401 — used by tool methods added in later tasks
+from crowdstrike_mcp.common.errors import format_api_error
 from crowdstrike_mcp.modules.base import BaseModule
 from crowdstrike_mcp.resources.threatgraph_reference import ThreatGraphEdgeTypeCache
-from crowdstrike_mcp.utils import format_text_response  # noqa: F401 — used by tool methods added in later tasks
+from crowdstrike_mcp.utils import format_text_response
 
 if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
@@ -51,9 +51,7 @@ class ThreatGraphModule(BaseModule):
     def __init__(self, client):
         super().__init__(client)
         if not THREATGRAPH_AVAILABLE:
-            raise ImportError(
-                "ThreatGraph not available. Ensure crowdstrike-falconpy >= 1.6.1 is installed."
-            )
+            raise ImportError("ThreatGraph not available. Ensure crowdstrike-falconpy >= 1.6.1 is installed.")
         self._edge_type_cache = ThreatGraphEdgeTypeCache(self._fetch_edge_types)
         self._log("Initialized")
 
@@ -69,8 +67,35 @@ class ThreatGraphModule(BaseModule):
         self.resources.append(EDGE_TYPES_RESOURCE_URI)
 
     def register_tools(self, server: FastMCP) -> None:
-        # Tools added in later tasks.
-        pass
+        self._add_tool(
+            server,
+            self.threatgraph_get_edge_types,
+            name="threatgraph_get_edge_types",
+            description=(
+                "Refresh and return the live list of Threat Graph edge types. "
+                "Also invalidates the falcon://reference/threatgraph-edge-types "
+                "cache so the next resource read re-fetches. Use sparingly; "
+                "prefer reading the resource."
+            ),
+        )
+
+    async def threatgraph_get_edge_types(self) -> str:
+        """Refresh the edge-type cache and return the current list."""
+        try:
+            response = self._fetch_edge_types()
+            if response.get("status_code") != 200:
+                err = format_api_error(
+                    response,
+                    "Failed to get edge types",
+                    operation="queries_edgetypes_get",
+                )
+                return format_text_response(f"Failed to get edge types: {err}", raw=True)
+            # Invalidate then re-read so the cache picks up the fresh response
+            self._edge_type_cache.invalidate()
+            body = self._edge_type_cache.read()
+            return format_text_response(body, raw=True)
+        except Exception as e:
+            return format_text_response(f"Failed to get edge types: {e}", raw=True)
 
     # -------- internal helpers --------
 
