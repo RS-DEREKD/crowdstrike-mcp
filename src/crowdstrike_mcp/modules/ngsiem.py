@@ -91,6 +91,36 @@ class NGSIEMModule(BaseModule):
             name="ngsiem_get_parser",
             description="Fetch a parser's live configuration + script.",
         )
+        self._add_tool(
+            server,
+            self.ngsiem_list_data_connections,
+            name="ngsiem_list_data_connections",
+            description="Enumerate NGSIEM data connections (compact projection by default).",
+        )
+        self._add_tool(
+            server,
+            self.ngsiem_get_data_connection,
+            name="ngsiem_get_data_connection",
+            description="Fetch a single data connection's state + configuration.",
+        )
+        self._add_tool(
+            server,
+            self.ngsiem_get_provisioning_status,
+            name="ngsiem_get_provisioning_status",
+            description="Fetch overall NGSIEM ingestion provisioning / health status.",
+        )
+        self._add_tool(
+            server,
+            self.ngsiem_list_data_connectors,
+            name="ngsiem_list_data_connectors",
+            description="Enumerate available NGSIEM data connector types.",
+        )
+        self._add_tool(
+            server,
+            self.ngsiem_list_connector_configs,
+            name="ngsiem_list_connector_configs",
+            description="Enumerate connector configuration instances (compact projection by default).",
+        )
 
     async def ngsiem_query(
         self,
@@ -591,4 +621,96 @@ class NGSIEMModule(BaseModule):
             tool_name="ngsiem_get_parser",
             label="Parser",
             identifier=id,
+        )
+
+    async def ngsiem_list_data_connections(
+        self,
+        filter: Annotated[Optional[str], "FQL filter (optional)"] = None,
+        limit: Annotated[int, "Max records (default 100, cap 1000)"] = 100,
+        detail: Annotated[bool, "Return full records instead of compact projection"] = False,
+    ) -> str:
+        """Enumerate NGSIEM data connections (ingestion pipelines)."""
+        limit = min(max(limit, 1), 1000)
+        falcon = self._service(NGSIEM)
+        kwargs: dict = {"limit": limit}
+        if filter:
+            kwargs["filter"] = filter
+        result = self._call_and_unwrap(
+            falcon.list_data_connections, "list_data_connections", **kwargs
+        )
+        return self._format_list(
+            result,
+            tool_name="ngsiem_list_data_connections",
+            label="Data Connections",
+            filter_=filter,
+            limit=limit,
+            detail=detail,
+        )
+
+    async def ngsiem_get_data_connection(
+        self,
+        id: Annotated[str, "Data connection ID"],
+    ) -> str:
+        """Fetch a single data connection's state + configuration."""
+        falcon = self._service(NGSIEM)
+        result = self._call_and_unwrap(
+            falcon.get_connection_by_id, "get_connection_by_id", ids=id
+        )
+        return self._format_single(
+            result,
+            tool_name="ngsiem_get_data_connection",
+            label="Data Connection",
+            identifier=id,
+        )
+
+    async def ngsiem_get_provisioning_status(self) -> str:
+        """Fetch overall NGSIEM ingestion provisioning / health status."""
+        falcon = self._service(NGSIEM)
+        result = self._call_and_unwrap(
+            falcon.get_provisioning_status, "get_provisioning_status"
+        )
+        return self._format_single(
+            result,
+            tool_name="ngsiem_get_provisioning_status",
+            label="Provisioning Status",
+            identifier="(tenant)",
+        )
+
+    async def ngsiem_list_data_connectors(self) -> str:
+        """Enumerate available NGSIEM data connector types."""
+        falcon = self._service(NGSIEM)
+        result = self._call_and_unwrap(
+            falcon.list_data_connectors, "list_data_connectors"
+        )
+        return self._format_list(
+            result,
+            tool_name="ngsiem_list_data_connectors",
+            label="Data Connectors",
+            filter_=None,
+            limit=1000,
+            detail=True,  # connector-type records are small; return full
+        )
+
+    async def ngsiem_list_connector_configs(
+        self,
+        filter: Annotated[Optional[str], "FQL filter (optional)"] = None,
+        limit: Annotated[int, "Max records (default 100, cap 1000)"] = 100,
+        detail: Annotated[bool, "Return full records instead of compact projection"] = False,
+    ) -> str:
+        """Enumerate connector configuration instances."""
+        limit = min(max(limit, 1), 1000)
+        falcon = self._service(NGSIEM)
+        kwargs: dict = {"limit": limit}
+        if filter:
+            kwargs["filter"] = filter
+        result = self._call_and_unwrap(
+            falcon.list_connector_configs, "list_connector_configs", **kwargs
+        )
+        return self._format_list(
+            result,
+            tool_name="ngsiem_list_connector_configs",
+            label="Connector Configs",
+            filter_=filter,
+            limit=limit,
+            detail=detail,
         )
