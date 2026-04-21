@@ -221,22 +221,17 @@ class TestGetRiskTimelineProjection:
         assert kwargs.get("override", "").startswith("GET,/cloud-security-timeline")
         assert kwargs.get("parameters", {}).get("id") == "crn:example"
 
-    def test_full_and_max_results_still_unused_in_projection(self, cloud_module):
-        """full=True and max_results have no effect on _get_risk_timeline projection itself.
+    def test_full_still_unused_in_projection(self, cloud_module):
+        """full=True has no effect on _get_risk_timeline projection itself.
 
-        They're consumed by cloud_get_risk_timeline (Task 6) and _build_merged_timeline
-        (Task 5) respectively; the projection layer ignores them.
+        It's consumed by cloud_get_risk_timeline (Task 6); the projection layer ignores it.
         """
         cloud_module.harness.command.return_value = {
             "status_code": 200,
             "body": SAMPLE_TIMELINE_BODY,
         }
-        result = cloud_module._get_risk_timeline(
-            asset_id="crn:x",
-            full=True,
-            max_results=1,
-        )
-        # Full fixture still projects — full/max_results unused at this layer.
+        result = cloud_module._get_risk_timeline(asset_id="crn:x", full=True)
+        # Full fixture still projects — full is unused at this layer.
         assert result["success"] is True
         assert result["total_risks"] == 2
         assert result["total_changes"] == 2
@@ -322,3 +317,85 @@ class TestRiskTimelineFilters:
         assert ri["events"][0]["occurred_at"] == "2026-04-18T09:12:00Z"
         # Changes untouched by risk_id, but since still prunes cc-001 (2026-04-10).
         assert {c["id"] for c in result["changes"]} == {"cc-002"}
+
+
+class TestMergedTimeline:
+    """Event-level merge: risk events + change resource_events, sorted desc by timestamp."""
+
+    def test_timeline_contains_one_row_per_risk_event_and_resource_event(self, cloud_module):
+        cloud_module.harness.command.return_value = {
+            "status_code": 200,
+            "body": SAMPLE_TIMELINE_BODY,
+        }
+        result = cloud_module._get_risk_timeline(asset_id="crn:x")
+        # 2 risks x 2 events + 2 changes x 1 resource_event = 6 rows
+        assert len(result["timeline"]) == 6
+
+    def test_timeline_sorted_descending_by_timestamp(self, cloud_module):
+        cloud_module.harness.command.return_value = {
+            "status_code": 200,
+            "body": SAMPLE_TIMELINE_BODY,
+        }
+        result = cloud_module._get_risk_timeline(asset_id="crn:x")
+        timestamps = [row["timestamp"] for row in result["timeline"]]
+        assert timestamps == sorted(timestamps, reverse=True)
+
+    def test_timeline_rows_carry_kind_and_source_id(self, cloud_module):
+        cloud_module.harness.command.return_value = {
+            "status_code": 200,
+            "body": SAMPLE_TIMELINE_BODY,
+        }
+        result = cloud_module._get_risk_timeline(asset_id="crn:x")
+        kinds = {row["kind"] for row in result["timeline"]}
+        assert kinds == {"risk", "change"}
+        risk_row = next(r for r in result["timeline"] if r["kind"] == "risk")
+        assert "source_id" in risk_row and risk_row["source_id"].startswith("ri-")
+        change_row = next(r for r in result["timeline"] if r["kind"] == "change")
+        assert change_row["source_id"].startswith("cc-")
+
+    def test_timeline_respects_max_results(self, cloud_module):
+        cloud_module.harness.command.return_value = {
+            "status_code": 200,
+            "body": SAMPLE_TIMELINE_BODY,
+        }
+        result = cloud_module._get_risk_timeline(asset_id="crn:x", max_results=3)
+        assert len(result["timeline"]) == 3
+        # Still sorted descending
+        ts = [row["timestamp"] for row in result["timeline"]]
+        assert ts == sorted(ts, reverse=True)
+
+    def test_timeline_emits_synthetic_row_for_risk_with_no_events(self, cloud_module):
+        body = {
+            "resources": [
+                {
+                    "asset": SAMPLE_TIMELINE_BODY["resources"][0]["asset"],
+                    "timeline": {
+                        "configuration_changes": [],
+                        "risks": {
+                            "risk_instances": [
+                                {
+                                    "id": "ri-synth",
+                                    "rule_name": "silent risk",
+                                    "severity": "low",
+                                    "current_status": "open",
+                                    "reason": "",
+                                    "first_seen": "2026-04-01T00:00:00Z",
+                                    "last_seen": "2026-04-20T00:00:00Z",
+                                    "resolved_at": None,
+                                    "risk_factors_categories": [],
+                                    "events": [],
+                                }
+                            ]
+                        },
+                    },
+                }
+            ]
+        }
+        cloud_module.harness.command.return_value = {"status_code": 200, "body": body}
+        result = cloud_module._get_risk_timeline(asset_id="crn:x")
+        assert len(result["timeline"]) == 1
+        row = result["timeline"][0]
+        assert row["kind"] == "risk"
+        assert row["event_type"] == "risk_current_state"
+        assert row["timestamp"] == "2026-04-20T00:00:00Z"
+        assert row["source_id"] == "ri-synth"

@@ -85,6 +85,60 @@ def _apply_since_to_changes(changes: list[dict], since: str) -> list[dict]:
     return out
 
 
+def _build_merged_timeline(risks: list[dict], changes: list[dict], max_results: int) -> list[dict]:
+    """Event-level merge: one row per risk event and per configuration_change resource_event.
+
+    Each row carries at minimum: kind ('risk' or 'change'), timestamp, source_id, plus
+    kind-specific context (event_type + rule_name + severity for risk rows; event_name
+    + asset_revision + user_id + user_name for change rows). Rows are sorted descending
+    by timestamp and trimmed to ``max_results``. Risk instances with no events emit a
+    single synthetic row at ``last_seen`` tagged ``risk_current_state``.
+    """
+    rows: list[dict] = []
+
+    for r in risks:
+        if r["events"]:
+            for e in r["events"]:
+                rows.append(
+                    {
+                        "kind": "risk",
+                        "event_type": e["event_type"],
+                        "timestamp": e["occurred_at"],
+                        "source_id": r["id"],
+                        "rule_name": r["rule_name"],
+                        "severity": r["severity"],
+                    }
+                )
+        else:
+            rows.append(
+                {
+                    "kind": "risk",
+                    "event_type": "risk_current_state",
+                    "timestamp": r["last_seen"],
+                    "source_id": r["id"],
+                    "rule_name": r["rule_name"],
+                    "severity": r["severity"],
+                }
+            )
+
+    for c in changes:
+        for ev in c["resource_events"]:
+            rows.append(
+                {
+                    "kind": "change",
+                    "event_name": ev["event_name"],
+                    "timestamp": ev["timestamp"],
+                    "source_id": c["id"],
+                    "asset_revision": c["asset_revision"],
+                    "user_id": ev["user_id"],
+                    "user_name": ev["user_name"],
+                }
+            )
+
+    rows.sort(key=lambda row: row["timestamp"], reverse=True)
+    return rows[:max_results]
+
+
 class CloudSecurityModule(BaseModule):
     """Cloud security posture and detection data."""
 
@@ -658,7 +712,7 @@ class CloudSecurityModule(BaseModule):
                 "asset": asset,
                 "risks": risks,
                 "changes": changes,
-                "timeline": [],  # populated in Task 5
+                "timeline": _build_merged_timeline(risks, changes, max_results),
                 "total_risks": len(risks),
                 "total_changes": len(changes),
             }
