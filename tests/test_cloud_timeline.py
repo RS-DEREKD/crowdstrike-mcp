@@ -220,3 +220,21 @@ class TestGetRiskTimelineProjection:
         _, kwargs = cloud_module.harness.command.call_args
         assert kwargs.get("override", "").startswith("GET,/cloud-security-timeline")
         assert kwargs.get("parameters", {}).get("id") == "crn:example"
+
+    def test_unused_params_accepted_as_noop_in_task3(self, cloud_module):
+        """risk_id/since/full/max_results accepted but not yet applied (Tasks 4-6 wire them)."""
+        cloud_module.harness.command.return_value = {
+            "status_code": 200,
+            "body": SAMPLE_TIMELINE_BODY,
+        }
+        result = cloud_module._get_risk_timeline(
+            asset_id="crn:x",
+            risk_id="ri-100",
+            since="2099-01-01T00:00:00Z",
+            full=True,
+            max_results=1,
+        )
+        # All parameters silently ignored in Task 3 — full fixture contents still projected.
+        assert result["success"] is True
+        assert result["total_risks"] == 2
+        assert result["total_changes"] == 2

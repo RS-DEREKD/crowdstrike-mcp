@@ -542,8 +542,14 @@ class CloudSecurityModule(BaseModule):
             resources = r.get("body", {}).get("resources", [])
             if not resources:
                 return {
-                    "success": False,
-                    "error": (
+                    "success": True,
+                    "asset": {},
+                    "risks": [],
+                    "changes": [],
+                    "timeline": [],
+                    "total_risks": 0,
+                    "total_changes": 0,
+                    "message": (
                         f"No timeline found for GCRN '{asset_id}' "
                         "(feature may not be enabled on this tenant or GCRN is unknown)."
                     ),
