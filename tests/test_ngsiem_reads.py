@@ -372,12 +372,15 @@ class TestListDataConnectors:
         ngsiem_module.falcon.list_data_connectors.return_value = {
             "status_code": 200,
             "body": {"resources": [
-                {"id": "box", "name": "Box"},
-                {"id": "cato", "name": "Cato"},
+                {"id": "box", "name": "Box", "description": "Box cloud storage"},
+                {"id": "cato", "name": "Cato", "description": "Cato SASE"},
             ]},
         }
         result = asyncio.run(ngsiem_module.ngsiem_list_data_connectors())
         assert "Box" in result and "Cato" in result
+        # Verify detail=True: non-compact fields (description) must appear
+        assert "Box cloud storage" in result
+        assert "Cato SASE" in result
 
     def test_handles_api_error(self, ngsiem_module):
         ngsiem_module.falcon.list_data_connectors.return_value = {
