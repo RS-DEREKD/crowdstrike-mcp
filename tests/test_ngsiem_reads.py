@@ -409,3 +409,29 @@ class TestListConnectorConfigs:
         }
         result = asyncio.run(ngsiem_module.ngsiem_list_connector_configs())
         assert "failed" in result.lower()
+
+
+class TestNgsiemReadToolRegistration:
+    EXPECTED_NEW_TOOLS = [
+        "ngsiem_list_saved_queries",
+        "ngsiem_get_saved_query_template",
+        "ngsiem_list_lookup_files",
+        "ngsiem_get_lookup_file",
+        "ngsiem_list_dashboards",
+        "ngsiem_list_parsers",
+        "ngsiem_get_parser",
+        "ngsiem_list_data_connections",
+        "ngsiem_get_data_connection",
+        "ngsiem_get_provisioning_status",
+        "ngsiem_list_data_connectors",
+        "ngsiem_list_connector_configs",
+    ]
+
+    def test_all_tools_register_as_read(self, ngsiem_module):
+        server = MagicMock()
+        server.tool.return_value = lambda fn: fn
+        ngsiem_module.register_tools(server)
+        for name in self.EXPECTED_NEW_TOOLS:
+            assert name in ngsiem_module.tools, f"{name} not registered"
+        # And the pre-existing tool stays registered
+        assert "ngsiem_query" in ngsiem_module.tools
