@@ -532,3 +532,65 @@ class TestRTRListFiles:
         }
         result = asyncio.run(rtr_module.rtr_list_files(session_id="sess-abc"))
         assert "failed" in result.lower()
+
+
+class TestRTRGetExtractedFileContents:
+    def test_saves_bytes_and_returns_path(self, rtr_module):
+        # On success, falconpy returns raw bytes (7z archive), not a dict
+        rtr_module.falcon.get_extracted_file_contents.return_value = b"\x37\x7a\xbc\xafFAKE_7Z"
+        result = asyncio.run(
+            rtr_module.rtr_get_extracted_file_contents(
+                session_id="sess-abc", sha256="abc123"
+            )
+        )
+        expected_path = os.path.join(rtr_module._download_dir, "abc123.7z")
+        assert expected_path in result
+        assert os.path.exists(expected_path)
+        with open(expected_path, "rb") as f:
+            assert f.read().startswith(b"\x37\x7a\xbc\xaf")
+
+    def test_passes_session_id_sha256_and_filename(self, rtr_module):
+        rtr_module.falcon.get_extracted_file_contents.return_value = b"BYTES"
+        asyncio.run(
+            rtr_module.rtr_get_extracted_file_contents(
+                session_id="sess-abc", sha256="abc", filename="evidence.exe"
+            )
+        )
+        kwargs = rtr_module.falcon.get_extracted_file_contents.call_args.kwargs
+        assert kwargs["session_id"] == "sess-abc"
+        assert kwargs["sha256"] == "abc"
+        assert kwargs["filename"] == "evidence.exe"
+
+    def test_requires_session_id(self, rtr_module):
+        result = asyncio.run(
+            rtr_module.rtr_get_extracted_file_contents(session_id="", sha256="abc")
+        )
+        assert "session_id" in result.lower()
+
+    def test_requires_sha256(self, rtr_module):
+        result = asyncio.run(
+            rtr_module.rtr_get_extracted_file_contents(session_id="s", sha256="")
+        )
+        assert "sha256" in result.lower()
+
+    def test_handles_failure_dict(self, rtr_module):
+        rtr_module.falcon.get_extracted_file_contents.return_value = {
+            "status_code": 404,
+            "body": {"errors": [{"message": "Not found"}]},
+        }
+        result = asyncio.run(
+            rtr_module.rtr_get_extracted_file_contents(
+                session_id="sess-abc", sha256="abc"
+            )
+        )
+        assert "failed" in result.lower()
+
+    def test_mentions_password_reminder(self, rtr_module):
+        rtr_module.falcon.get_extracted_file_contents.return_value = b"7z-bytes"
+        result = asyncio.run(
+            rtr_module.rtr_get_extracted_file_contents(
+                session_id="sess-abc", sha256="abc"
+            )
+        )
+        # Users must know the archive password to extract
+        assert "infected" in result.lower()

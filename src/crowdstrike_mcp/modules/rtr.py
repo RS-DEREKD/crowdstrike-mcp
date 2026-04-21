@@ -173,6 +173,16 @@ class RTRModule(BaseModule):
                 "to download the 7z archive."
             ),
         )
+        self._add_tool(
+            server,
+            self.rtr_get_extracted_file_contents,
+            name="rtr_get_extracted_file_contents",
+            description=(
+                "Download a file pulled via `getfile` to a local 7z archive "
+                "(saved under ~/.config/falcon/rtr_downloads/<sha256>.7z). "
+                "Password: `infected`. Use rtr_list_files to find the sha256 first."
+            ),
+        )
 
     # ------------------------------------------------------------------
     # Tools
@@ -358,6 +368,33 @@ class RTRModule(BaseModule):
                 lines.append("")
         return format_text_response("\n".join(lines), raw=True)
 
+    async def rtr_get_extracted_file_contents(
+        self,
+        session_id: Annotated[str, "RTR session ID the file was pulled in"],
+        sha256: Annotated[str, "SHA256 of the pulled file (from rtr_list_files)"],
+        filename: Annotated[
+            Optional[str],
+            "Optional filename hint passed to the API (archive-internal name)",
+        ] = None,
+    ) -> str:
+        """Download a pulled file to a local 7z (password `infected`)."""
+        result = self._get_extracted_file_contents(
+            session_id=session_id, sha256=sha256, filename=filename
+        )
+        if not result.get("success"):
+            return format_text_response(
+                f"Failed to get extracted file contents: {result.get('error')}", raw=True
+            )
+        path = result["path"]
+        size = result["size"]
+        lines = [
+            f"Downloaded {size} bytes to {path}",
+            "",
+            "The archive is a 7zip file password-protected with the password `infected` "
+            "(standard CrowdStrike RTR convention). Extract with `7z x -pinfected <path>`.",
+        ]
+        return format_text_response("\n".join(lines), raw=True)
+
     # ------------------------------------------------------------------
     # Internal helpers (one per tool)
     # ------------------------------------------------------------------
@@ -536,6 +573,41 @@ class RTRModule(BaseModule):
             return {"success": True, "files": r.get("body", {}).get("resources", [])}
         except Exception as e:
             return {"success": False, "error": f"Error listing RTR files: {e}"}
+
+    def _get_extracted_file_contents(
+        self,
+        session_id: str,
+        sha256: str,
+        filename: Optional[str],
+    ):
+        if not session_id:
+            return {"success": False, "error": "session_id is required"}
+        if not sha256:
+            return {"success": False, "error": "sha256 is required"}
+        try:
+            svc = self._service(RealTimeResponse)
+            kwargs = {"session_id": session_id, "sha256": sha256}
+            if filename:
+                kwargs["filename"] = filename
+            r = svc.get_extracted_file_contents(**kwargs)
+            # Falconpy returns raw bytes on SUCCESS, dict on FAILURE.
+            if isinstance(r, dict):
+                return {
+                    "success": False,
+                    "error": format_api_error(
+                        r,
+                        "Failed to download RTR file",
+                        operation="RTR_GetExtractedFileContents",
+                    ),
+                }
+            data = bytes(r) if not isinstance(r, (bytes, bytearray)) else r
+            os.makedirs(self._download_dir, exist_ok=True)
+            path = os.path.join(self._download_dir, f"{sha256}.7z")
+            with open(path, "wb") as f:
+                f.write(data)
+            return {"success": True, "path": path, "size": len(data)}
+        except Exception as e:
+            return {"success": False, "error": f"Error downloading RTR file: {e}"}
 
     # ------------------------------------------------------------------
     # Allowlist + audit helpers
