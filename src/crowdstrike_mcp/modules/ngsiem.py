@@ -248,3 +248,53 @@ class NGSIEMModule(BaseModule):
             except Exception:
                 pass
             return {"success": False, "error": f"Query execution error: {str(e)}"}
+
+    # ------------------------------------------------------------------
+    # Shared unwrap helper (FR 07 read-expansion tools)
+    # ------------------------------------------------------------------
+
+    def _call_and_unwrap(self, method, operation: str, **kwargs) -> dict:
+        """Call a falconpy method and normalize the response shape.
+
+        Returns ``{"success": True, "resources": <list|dict>, "body": <dict>}``
+        on HTTP 200, or ``{"success": False, "error": <str>}`` on any
+        non-2xx or thrown exception. Errors are extracted from both the
+        top-level ``resources.errors`` and ``body.errors`` shapes that
+        falconpy may use, matching the pattern in ``_execute_query``.
+        """
+        try:
+            response = method(**kwargs)
+        except Exception as exc:
+            return {"success": False, "error": f"{operation} call error: {exc}"}
+
+        status = response.get("status_code", 0)
+        body = response.get("body", {}) or {}
+
+        if 200 <= status < 300:
+            return {
+                "success": True,
+                "resources": body.get("resources", []),
+                "body": body,
+            }
+
+        error_details: list[str] = []
+        resources = response.get("resources", {}) or {}
+        if isinstance(resources, dict) and "errors" in resources:
+            for err in resources["errors"]:
+                if isinstance(err, dict) and "message" in err:
+                    error_details.append(err["message"])
+                else:
+                    error_details.append(str(err))
+        if "errors" in body:
+            for err in body["errors"]:
+                if isinstance(err, dict) and "message" in err:
+                    error_details.append(err["message"])
+                else:
+                    error_details.append(str(err))
+        if not error_details:
+            error_details = [f"HTTP {status} error"]
+
+        return {
+            "success": False,
+            "error": f"{operation} failed (HTTP {status}): {'; '.join(error_details)}",
+        }
