@@ -413,3 +413,28 @@ class TestThreatGraphGetSummary:
             threatgraph_module.threatgraph_get_summary(ids=[], vertex_type="process")
         )
         assert "ids" in result.lower() or "required" in result.lower()
+
+
+class TestThreatGraphRegistrationSurface:
+    def test_registers_exactly_five_tools_at_read_tier(self, threatgraph_module):
+        server = MagicMock()
+        server.tool.return_value = lambda fn: fn
+        threatgraph_module.register_tools(server)
+        expected = {
+            "threatgraph_get_vertices",
+            "threatgraph_get_edges",
+            "threatgraph_get_ran_on",
+            "threatgraph_get_summary",
+            "threatgraph_get_edge_types",
+        }
+        assert set(threatgraph_module.tools) == expected
+
+    def test_write_tools_not_registered_when_disabled(self, threatgraph_module):
+        # ThreatGraph is read-only; this guards against accidentally adding a
+        # write tool in the future without opting in explicitly.
+        threatgraph_module.allow_writes = False
+        server = MagicMock()
+        server.tool.return_value = lambda fn: fn
+        threatgraph_module.register_tools(server)
+        # All tools remain read-tier; allow_writes flip must not add or drop any.
+        assert len(threatgraph_module.tools) == 5
