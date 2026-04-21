@@ -16,6 +16,7 @@ _FALCONPY_PATCHES = [
     "crowdstrike_mcp.modules.correlation.CorrelationRules",
     "crowdstrike_mcp.modules.correlation.APIHarnessV2",
     "crowdstrike_mcp.modules.hosts.Hosts",
+    "crowdstrike_mcp.modules.idp.IdentityProtection",
     "crowdstrike_mcp.modules.ngsiem.NGSIEM",
     "crowdstrike_mcp.modules.response.Hosts",
     "crowdstrike_mcp.modules.spotlight.SpotlightEvaluationLogic",
@@ -60,6 +61,7 @@ EXPECTED_READ_TOOLS = {
     "spotlight_vulnerabilities_combined",
     "spotlight_get_remediations",
     "spotlight_host_vulns",
+    "identity_investigate_entity",
     "get_stored_response",
     "list_stored_responses",
 }
@@ -93,6 +95,7 @@ def _patch_falconpy():
         ),
         patch.multiple("crowdstrike_mcp.modules.correlation", CorrelationRules=MagicMock(), APIHarnessV2=MagicMock()),
         patch.multiple("crowdstrike_mcp.modules.hosts", Hosts=MagicMock()),
+        patch.multiple("crowdstrike_mcp.modules.idp", IdentityProtection=MagicMock()),
         patch.multiple("crowdstrike_mcp.modules.ngsiem", NGSIEM=MagicMock()),
         patch.multiple("crowdstrike_mcp.modules.response", Hosts=MagicMock()),
         patch.multiple("crowdstrike_mcp.modules.spotlight", SpotlightEvaluationLogic=MagicMock()),
