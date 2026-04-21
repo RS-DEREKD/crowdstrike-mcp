@@ -485,3 +485,50 @@ class TestRTRCheckCommandStatus:
             )
         )
         assert "failed" in result.lower()
+
+
+class TestRTRListFiles:
+    def test_returns_file_list(self, rtr_module):
+        rtr_module.falcon.list_files_v2.return_value = {
+            "status_code": 200,
+            "body": {
+                "resources": [
+                    {
+                        "id": "file-1",
+                        "sha256": "abc123",
+                        "name": "suspicious.exe",
+                        "size": 12345,
+                        "created_at": "2026-04-20T00:00:00Z",
+                    }
+                ]
+            },
+        }
+        result = asyncio.run(rtr_module.rtr_list_files(session_id="sess-abc"))
+        assert "suspicious.exe" in result
+        assert "abc123" in result
+
+    def test_passes_session_id(self, rtr_module):
+        rtr_module.falcon.list_files_v2.return_value = {
+            "status_code": 200, "body": {"resources": []},
+        }
+        asyncio.run(rtr_module.rtr_list_files(session_id="sess-abc"))
+        rtr_module.falcon.list_files_v2.assert_called_once_with(session_id="sess-abc")
+
+    def test_requires_session_id(self, rtr_module):
+        result = asyncio.run(rtr_module.rtr_list_files(session_id=""))
+        assert "session_id" in result.lower()
+
+    def test_handles_empty_results(self, rtr_module):
+        rtr_module.falcon.list_files_v2.return_value = {
+            "status_code": 200, "body": {"resources": []},
+        }
+        result = asyncio.run(rtr_module.rtr_list_files(session_id="sess-abc"))
+        assert "no files" in result.lower() or "0" in result
+
+    def test_handles_api_error(self, rtr_module):
+        rtr_module.falcon.list_files_v2.return_value = {
+            "status_code": 500,
+            "body": {"errors": [{"message": "boom"}]},
+        }
+        result = asyncio.run(rtr_module.rtr_list_files(session_id="sess-abc"))
+        assert "failed" in result.lower()

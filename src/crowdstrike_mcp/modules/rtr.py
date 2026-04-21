@@ -163,6 +163,16 @@ class RTRModule(BaseModule):
                 "async; first check usually returns complete:false — poll again."
             ),
         )
+        self._add_tool(
+            server,
+            self.rtr_list_files,
+            name="rtr_list_files",
+            description=(
+                "List files pulled into an RTR session via `getfile`. Returns "
+                "name, sha256, and size. Pair with rtr_get_extracted_file_contents "
+                "to download the 7z archive."
+            ),
+        )
 
     # ------------------------------------------------------------------
     # Tools
@@ -321,6 +331,31 @@ class RTRModule(BaseModule):
             lines.append(stderr)
         if not stdout and not stderr:
             lines.append("(no output yet)")
+        return format_text_response("\n".join(lines), raw=True)
+
+    async def rtr_list_files(
+        self,
+        session_id: Annotated[str, "RTR session ID"],
+    ) -> str:
+        """List files pulled via `getfile` in this session."""
+        result = self._list_files(session_id)
+        if not result.get("success"):
+            return format_text_response(
+                f"Failed to list RTR session files: {result.get('error')}", raw=True
+            )
+        files = result["files"]
+        lines = [f"RTR Session Files: {len(files)} records", ""]
+        if not files:
+            lines.append("No files have been pulled in this session. Use `getfile` first.")
+        else:
+            for i, f in enumerate(files, 1):
+                lines.append(
+                    f"{i}. **{f.get('name', '?')}** — sha256: {f.get('sha256', '?')}"
+                )
+                lines.append(
+                    f"   size: {f.get('size', '?')} | created: {f.get('created_at', '?')}"
+                )
+                lines.append("")
         return format_text_response("\n".join(lines), raw=True)
 
     # ------------------------------------------------------------------
@@ -484,6 +519,23 @@ class RTRModule(BaseModule):
             return {"success": True, "resource": resources[0] if resources else {}}
         except Exception as e:
             return {"success": False, "error": f"Error checking RTR command status: {e}"}
+
+    def _list_files(self, session_id: str):
+        if not session_id:
+            return {"success": False, "error": "session_id is required"}
+        try:
+            svc = self._service(RealTimeResponse)
+            r = svc.list_files_v2(session_id=session_id)
+            if r["status_code"] != 200:
+                return {
+                    "success": False,
+                    "error": format_api_error(
+                        r, "Failed to list RTR files", operation="RTR_ListFilesV2"
+                    ),
+                }
+            return {"success": True, "files": r.get("body", {}).get("resources", [])}
+        except Exception as e:
+            return {"success": False, "error": f"Error listing RTR files: {e}"}
 
     # ------------------------------------------------------------------
     # Allowlist + audit helpers
