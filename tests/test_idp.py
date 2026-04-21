@@ -325,3 +325,59 @@ class TestRiskAssessmentInvestigation:
         assert ra["riskScore"] == 0
         assert ra["riskScoreSeverity"] == "LOW"
         assert ra["riskFactors"] == []
+
+
+class TestTimelineInvestigation:
+    def test_loops_per_entity(self, idp_module):
+        idp_module.falcon.graphql.return_value = {
+            "status_code": 200,
+            "body": {"data": {"timeline": {"nodes": [], "pageInfo": {"hasNextPage": False}}}},
+        }
+        idp_module._get_entity_timelines_batch(["e1", "e2"], {"limit": 50})
+        assert idp_module.falcon.graphql.call_count == 2
+
+    def test_query_embeds_entity_id_and_time_range(self, idp_module):
+        idp_module.falcon.graphql.return_value = {
+            "status_code": 200,
+            "body": {"data": {"timeline": {"nodes": []}}},
+        }
+        idp_module._get_entity_timelines_batch(
+            ["e1"],
+            {
+                "start_time": "2026-04-01T00:00:00Z",
+                "end_time": "2026-04-20T00:00:00Z",
+                "event_types": ["AUDIT", "ACTIVITY"],
+                "limit": 25,
+            },
+        )
+        q = idp_module.falcon.graphql.call_args.kwargs["body"]["query"]
+        assert 'entityIds: ["e1"]' in q
+        assert 'startTime: "2026-04-01T00:00:00Z"' in q
+        assert 'endTime: "2026-04-20T00:00:00Z"' in q
+        # Event types rendered as unquoted enums
+        assert "categories: [AUDIT, ACTIVITY]" in q
+        assert "first: 25" in q
+
+    def test_returns_timelines_keyed_by_entity(self, idp_module):
+        idp_module.falcon.graphql.return_value = {
+            "status_code": 200,
+            "body": {"data": {"timeline": {
+                "nodes": [{"eventId": "ev1", "eventType": "AUDIT"}],
+                "pageInfo": {"hasNextPage": False},
+            }}},
+        }
+        result = idp_module._get_entity_timelines_batch(["e1"], {"limit": 50})
+        assert result["entity_count"] == 1
+        assert result["timelines"][0]["entity_id"] == "e1"
+        assert result["timelines"][0]["timeline"][0]["eventId"] == "ev1"
+
+    def test_early_exit_on_first_error(self, idp_module):
+        """If entity #1 fails with 403, we don't silently keep iterating."""
+        idp_module.falcon.graphql.return_value = {
+            "status_code": 403,
+            "body": {"errors": [{"message": "Forbidden"}]},
+        }
+        result = idp_module._get_entity_timelines_batch(["e1", "e2"], {"limit": 50})
+        assert "error" in result
+        # We bailed after the first call
+        assert idp_module.falcon.graphql.call_count == 1

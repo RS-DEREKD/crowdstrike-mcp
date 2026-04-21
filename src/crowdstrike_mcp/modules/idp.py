@@ -324,3 +324,116 @@ class IDPModule(BaseModule):
             for n in nodes if isinstance(n, dict)
         ]
         return {"risk_assessments": assessments, "entity_count": len(assessments)}
+
+    # --------------------------------------------------
+    # timeline_analysis
+    # --------------------------------------------------
+    _TIMELINE_FRAGMENTS = """
+        ... on TimelineUserOnEndpointActivityEvent {
+            sourceEntity { entityId primaryDisplayName }
+            targetEntity { entityId primaryDisplayName }
+            geoLocation { country countryCode city cityCode latitude longitude }
+            locationAssociatedWithUser userDisplayName endpointDisplayName ipAddress
+        }
+        ... on TimelineAuthenticationEvent {
+            sourceEntity { entityId primaryDisplayName }
+            targetEntity { entityId primaryDisplayName }
+            geoLocation { country countryCode city cityCode latitude longitude }
+            locationAssociatedWithUser userDisplayName endpointDisplayName ipAddress
+        }
+        ... on TimelineAlertEvent {
+            sourceEntity { entityId primaryDisplayName }
+        }
+        ... on TimelineDceRpcEvent {
+            sourceEntity { entityId primaryDisplayName }
+            targetEntity { entityId primaryDisplayName }
+            geoLocation { country countryCode city cityCode latitude longitude }
+            locationAssociatedWithUser userDisplayName endpointDisplayName ipAddress
+        }
+        ... on TimelineFailedAuthenticationEvent {
+            sourceEntity { entityId primaryDisplayName }
+            targetEntity { entityId primaryDisplayName }
+            geoLocation { country countryCode city cityCode latitude longitude }
+            locationAssociatedWithUser userDisplayName endpointDisplayName ipAddress
+        }
+        ... on TimelineSuccessfulAuthenticationEvent {
+            sourceEntity { entityId primaryDisplayName }
+            targetEntity { entityId primaryDisplayName }
+            geoLocation { country countryCode city cityCode latitude longitude }
+            locationAssociatedWithUser userDisplayName endpointDisplayName ipAddress
+        }
+        ... on TimelineServiceAccessEvent {
+            sourceEntity { entityId primaryDisplayName }
+            targetEntity { entityId primaryDisplayName }
+            geoLocation { country countryCode city cityCode latitude longitude }
+            locationAssociatedWithUser userDisplayName endpointDisplayName ipAddress
+        }
+        ... on TimelineFileOperationEvent {
+            targetEntity { entityId primaryDisplayName }
+            geoLocation { country countryCode city cityCode latitude longitude }
+            locationAssociatedWithUser userDisplayName endpointDisplayName ipAddress
+        }
+        ... on TimelineLdapSearchEvent {
+            sourceEntity { entityId primaryDisplayName }
+            targetEntity { entityId primaryDisplayName }
+            geoLocation { country countryCode city cityCode latitude longitude }
+            locationAssociatedWithUser userDisplayName endpointDisplayName ipAddress
+        }
+        ... on TimelineRemoteCodeExecutionEvent {
+            sourceEntity { entityId primaryDisplayName }
+            targetEntity { entityId primaryDisplayName }
+            geoLocation { country countryCode city cityCode latitude longitude }
+            locationAssociatedWithUser userDisplayName endpointDisplayName ipAddress
+        }
+        ... on TimelineConnectorConfigurationEvent { category }
+        ... on TimelineConnectorConfigurationAddedEvent { category }
+        ... on TimelineConnectorConfigurationDeletedEvent { category }
+        ... on TimelineConnectorConfigurationModifiedEvent { category }
+    """
+
+    def _build_timeline_query(
+        self, entity_id: str,
+        start_time: str | None, end_time: str | None,
+        event_types: list[str] | None, limit: int,
+    ) -> str:
+        filters = [f'sourceEntityQuery: {{entityIds: ["{entity_id}"]}}']
+        if isinstance(start_time, str) and start_time:
+            filters.append(f'startTime: "{start_time}"')
+        if isinstance(end_time, str) and end_time:
+            filters.append(f'endTime: "{end_time}"')
+        if isinstance(event_types, list) and event_types:
+            filters.append(f"categories: [{', '.join(event_types)}]")
+        return f"""
+        query {{
+            timeline({", ".join(filters)}, first: {limit}) {{
+                nodes {{
+                    eventId eventType eventSeverity timestamp
+                    {self._TIMELINE_FRAGMENTS}
+                }}
+                pageInfo {{ hasNextPage endCursor }}
+            }}
+        }}
+        """
+
+    def _get_entity_timelines_batch(
+        self, entity_ids: list[str], options: dict[str, Any]
+    ) -> dict[str, Any]:
+        timelines = []
+        for eid in entity_ids:
+            query = self._build_timeline_query(
+                entity_id=eid,
+                start_time=options.get("start_time"),
+                end_time=options.get("end_time"),
+                event_types=options.get("event_types"),
+                limit=options.get("limit", 50),
+            )
+            result = self._graphql_call(query, context=f"Failed to get timeline for '{eid}'")
+            if not result.get("success"):
+                return {"error": result["error"]}
+            tl = result["data"].get("timeline", {}) or {}
+            timelines.append({
+                "entity_id": eid,
+                "timeline": tl.get("nodes", []) if isinstance(tl.get("nodes"), list) else [],
+                "page_info": tl.get("pageInfo", {}) if isinstance(tl.get("pageInfo"), dict) else {},
+            })
+        return {"timelines": timelines, "entity_count": len(entity_ids)}
