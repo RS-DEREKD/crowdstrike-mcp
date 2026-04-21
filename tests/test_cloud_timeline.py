@@ -427,3 +427,88 @@ class TestMergedTimeline:
         # But the underlying projection is still intact.
         assert result["total_risks"] == 2
         assert result["total_changes"] == 2
+
+
+class TestCloudGetRiskTimelineFormatting:
+    """Public tool method: text rendering and full=True raw JSON."""
+
+    def test_default_renders_asset_header(self, cloud_module):
+        cloud_module.harness.command.return_value = {
+            "status_code": 200,
+            "body": SAMPLE_TIMELINE_BODY,
+        }
+        out = asyncio.run(
+            cloud_module.cloud_get_risk_timeline(asset_id="crn:x")
+        )
+        assert "Cloud Risk Timeline for" in out
+        assert "AWS::S3::Bucket" in out
+        assert "123456789012" in out
+
+    def test_default_lists_risks_and_changes(self, cloud_module):
+        cloud_module.harness.command.return_value = {
+            "status_code": 200,
+            "body": SAMPLE_TIMELINE_BODY,
+        }
+        out = asyncio.run(
+            cloud_module.cloud_get_risk_timeline(asset_id="crn:x")
+        )
+        assert "S3 bucket publicly accessible" in out
+        assert "S3 bucket missing encryption" in out
+        assert "PutPublicAccessBlock" in out
+
+    def test_default_renders_merged_timeline_section(self, cloud_module):
+        cloud_module.harness.command.return_value = {
+            "status_code": 200,
+            "body": SAMPLE_TIMELINE_BODY,
+        }
+        out = asyncio.run(
+            cloud_module.cloud_get_risk_timeline(asset_id="crn:x")
+        )
+        assert "Merged timeline" in out
+        assert "2026-04-18T09:12:00Z" in out
+
+    def test_full_returns_json_payload(self, cloud_module):
+        cloud_module.harness.command.return_value = {
+            "status_code": 200,
+            "body": SAMPLE_TIMELINE_BODY,
+        }
+        out = asyncio.run(
+            cloud_module.cloud_get_risk_timeline(asset_id="crn:x", full=True)
+        )
+        parsed = json.loads(out)
+        assert parsed["success"] is True
+        assert parsed["asset"]["cloud_provider"] == "aws"
+        assert parsed["total_risks"] == 2
+
+    def test_empty_timeline_message(self, cloud_module):
+        cloud_module.harness.command.return_value = {
+            "status_code": 200,
+            "body": {"resources": []},
+        }
+        out = asyncio.run(
+            cloud_module.cloud_get_risk_timeline(asset_id="crn:missing")
+        )
+        assert "No timeline found" in out
+        assert "crn:missing" in out
+
+    def test_api_error_surfaces_cleanly(self, cloud_module):
+        cloud_module.harness.command.return_value = {
+            "status_code": 403,
+            "body": {"errors": [{"message": "Forbidden"}]},
+        }
+        out = asyncio.run(
+            cloud_module.cloud_get_risk_timeline(asset_id="crn:x")
+        )
+        assert "Failed to get cloud risk timeline" in out
+        assert "403" in out
+
+    def test_429_surfaces_rate_limit_note(self, cloud_module):
+        cloud_module.harness.command.return_value = {
+            "status_code": 429,
+            "body": {"errors": [{"message": "Too Many Requests"}]},
+        }
+        out = asyncio.run(
+            cloud_module.cloud_get_risk_timeline(asset_id="crn:x")
+        )
+        assert "429" in out
+        assert "500 requests/min" in out

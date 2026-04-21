@@ -383,6 +383,87 @@ class CloudSecurityModule(BaseModule):
 
         return format_text_response("\n".join(lines), raw=True)
 
+    async def cloud_get_risk_timeline(
+        self,
+        asset_id: Annotated[str, "GCRN (Global Cloud Resource Name) of the cloud asset"],
+        risk_id: Annotated[Optional[str], "Filter to a single risk instance by its id"] = None,
+        since: Annotated[Optional[str], "ISO-8601 timestamp; drop events/changes older than this"] = None,
+        full: Annotated[bool, "Return the raw JSON payload instead of the projected summary"] = False,
+        max_results: Annotated[int, "Cap on total merged timeline rows rendered (default: 50)"] = 50,
+    ) -> str:
+        """Retrieve the enriched cloud-risk timeline for a single asset (GCRN)."""
+        result = self._get_risk_timeline(
+            asset_id=asset_id,
+            risk_id=risk_id,
+            since=since,
+            full=full,
+            max_results=max_results,
+        )
+
+        if not result.get("success"):
+            return format_text_response(result.get("error", "Unknown error"), raw=True)
+
+        # Empty timeline (200 + empty resources) — surface the "no timeline" message.
+        if not result["risks"] and not result["changes"] and result.get("message"):
+            return format_text_response(result["message"], raw=True)
+
+        if full:
+            return format_text_response(json.dumps(result, default=str, indent=2), raw=True)
+
+        asset = result["asset"]
+        lines: list[str] = [
+            f"Cloud Risk Timeline for {asset.get('id', asset_id)}",
+            f"Asset: {asset.get('type', '')} in "
+            f"{asset.get('cloud_provider', '')}/{asset.get('account_id', '')}/{asset.get('region', '')}"
+            f" (resource_id={asset.get('resource_id', '')})",
+            "",
+        ]
+
+        risks = result["risks"]
+        lines.append(f"Risks: {result['total_risks']} total")
+        for i, r in enumerate(risks, 1):
+            lines.append(
+                f"  {i}. [{r['severity'].upper()}] {r['rule_name']}  "
+                f"status={r['current_status']}  first_seen={r['first_seen']}  last_seen={r['last_seen']}"
+            )
+            if r.get("reason"):
+                lines.append(f"     reason: {r['reason'][:200]}")
+            if r["events"]:
+                ev_str = "; ".join(f"{e['event_type']} @ {e['occurred_at']}" for e in r["events"][:5])
+                lines.append(f"     events: {ev_str}")
+        lines.append("")
+
+        changes = result["changes"]
+        lines.append(f"Configuration changes: {result['total_changes']} total")
+        for i, c in enumerate(changes, 1):
+            lines.append(
+                f"  {i}. {c['updated_at']}  rev {c['asset_revision']}  {c['external_asset_type']}"
+            )
+            if c.get("changes"):
+                chg_str = "; ".join(f"{ch['action']} {ch['attribute']}" for ch in c["changes"][:5])
+                lines.append(f"     changes: {chg_str}")
+            for ev in c.get("resource_events", [])[:3]:
+                lines.append(
+                    f"     triggered by: {ev.get('event_name', '')} "
+                    f"user={ev.get('user_name', ev.get('user_id', ''))}"
+                )
+        lines.append("")
+
+        tl = result["timeline"]
+        lines.append(f"Merged timeline (most recent first, up to {max_results}):")
+        for row in tl:
+            if row["kind"] == "risk":
+                lines.append(
+                    f"  {row['timestamp']}  risk     {row['event_type']}  {row.get('rule_name', '')}"
+                )
+            else:
+                lines.append(
+                    f"  {row['timestamp']}  change   rev{row.get('asset_revision', '?')}  "
+                    f"{row.get('event_name', '')} by {row.get('user_name', row.get('user_id', ''))}"
+                )
+
+        return format_text_response("\n".join(lines), raw=True)
+
     # ------------------------------------------------------------------
     # Internal methods (logic from handlers/cloud_security.py)
     # ------------------------------------------------------------------
