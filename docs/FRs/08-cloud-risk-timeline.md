@@ -62,14 +62,18 @@ Unlocks root-cause analysis for cloud posture alerts inside the MCP workflow:
   actor, risk_id, change_summary) and expose a `full=true` flag for the raw
   payload.
 
-## Open Questions
+## Open Questions — Resolved (2026-04-21)
 
-1. **Asset ID format.** What identifier does the endpoint accept — internal
-   CrowdStrike asset UUID, cloud-native ARN/resource ID, or both? Confirm
-   against the swagger when falconpy wraps it.
-2. **Risk scoping.** If `risk_id` is omitted, does the endpoint return all
-   risks on the asset, or does it require a risk filter? Impacts whether
-   the tool is primarily asset-centric or risk-centric.
-3. **Should this wait for falconpy coverage?** The raw `APIHarnessV2` path
-   works today but adds a maintenance edge case. If falconpy's release
-   cadence adds the method within a few weeks, deferring avoids churn.
+1. **Asset ID format.** Confirmed via swagger: the endpoint accepts a single
+   `id` query parameter, a GCRN (Global Cloud Resource Name) string.
+2. **Risk scoping.** The endpoint has no server-side `risk_id` filter; it
+   returns all risks on the asset. `risk_id` is exposed on the MCP tool as a
+   client-side filter.
+3. **Wait for falconpy coverage?** No — shipping via `APIHarnessV2.command(override=...)`
+   now, since falconpy 1.6.1 does not wrap this endpoint. Mirrors the
+   pattern in `correlation.py`. Tracked as a follow-up to swap to a native
+   falconpy method once released.
+
+## Design
+
+See `docs/superpowers/specs/2026-04-21-fr08-cloud-risk-timeline-design.md`.
