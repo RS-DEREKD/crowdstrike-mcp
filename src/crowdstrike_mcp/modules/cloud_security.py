@@ -61,6 +61,9 @@ TIMELINE_OVERRIDE = "GET,/cloud-security-timeline/entities/cloud-risks-enriched-
 
 def _apply_since_to_risks(risks: list[dict], since: str) -> list[dict]:
     """Drop risk events older than ``since``; drop risk instances that become empty."""
+    # Lexicographic comparison is safe for ISO-8601 with a consistent Z suffix, as emitted
+    # by GetCloudRisksEnrichedTimeline. If the upstream format ever drifts (offset form,
+    # naive timestamps), parse to datetime first.
     out: list[dict] = []
     for r in risks:
         kept = [e for e in r["events"] if e["occurred_at"] >= since]
@@ -71,6 +74,9 @@ def _apply_since_to_risks(risks: list[dict], since: str) -> list[dict]:
 
 def _apply_since_to_changes(changes: list[dict], since: str) -> list[dict]:
     """Drop configuration_change resource_events older than ``since``; drop changes that become empty."""
+    # Lexicographic comparison is safe for ISO-8601 with a consistent Z suffix, as emitted
+    # by GetCloudRisksEnrichedTimeline. If the upstream format ever drifts (offset form,
+    # naive timestamps), parse to datetime first.
     out: list[dict] = []
     for c in changes:
         kept = [ev for ev in c["resource_events"] if ev["timestamp"] >= since]

@@ -287,3 +287,38 @@ class TestRiskTimelineFilters:
         }
         result = cloud_module._get_risk_timeline(asset_id="crn:x", since="2026-04-15T00:00:00Z")
         assert {c["id"] for c in result["changes"]} == {"cc-002"}
+
+    def test_since_boundary_keeps_event_at_exact_timestamp(self, cloud_module):
+        """`since` is inclusive: an event at exactly `since` is kept (>= comparison)."""
+        cloud_module.harness.command.return_value = {
+            "status_code": 200,
+            "body": SAMPLE_TIMELINE_BODY,
+        }
+        # ri-100 has an event at exactly 2026-04-18T09:12:00Z — must survive a since at the same instant.
+        result = cloud_module._get_risk_timeline(
+            asset_id="crn:x",
+            since="2026-04-18T09:12:00Z",
+        )
+        ri100 = next(r for r in result["risks"] if r["id"] == "ri-100")
+        occurred_ats = [e["occurred_at"] for e in ri100["events"]]
+        assert "2026-04-18T09:12:00Z" in occurred_ats
+
+    def test_risk_id_and_since_compose(self, cloud_module):
+        """`risk_id` then `since` compose: only the matching risk survives, with only recent events."""
+        cloud_module.harness.command.return_value = {
+            "status_code": 200,
+            "body": SAMPLE_TIMELINE_BODY,
+        }
+        result = cloud_module._get_risk_timeline(
+            asset_id="crn:x",
+            risk_id="ri-100",
+            since="2026-04-15T00:00:00Z",
+        )
+        assert result["total_risks"] == 1
+        ri = result["risks"][0]
+        assert ri["id"] == "ri-100"
+        # Only the 2026-04-18 event survives; the 2026-04-05 event is dropped by since.
+        assert len(ri["events"]) == 1
+        assert ri["events"][0]["occurred_at"] == "2026-04-18T09:12:00Z"
+        # Changes untouched by risk_id, but since still prunes cc-001 (2026-04-10).
+        assert {c["id"] for c in result["changes"]} == {"cc-002"}
