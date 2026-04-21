@@ -192,3 +192,58 @@ class TestRTRListSessions:
         }
         result = asyncio.run(rtr_module.rtr_list_sessions(ids=["sess-1"]))
         assert "failed" in result.lower()
+
+
+class TestRTRPulseSession:
+    def test_pulses_session(self, rtr_module):
+        rtr_module.falcon.list_sessions.return_value = {
+            "status_code": 200,
+            "body": {"resources": [{"id": "sess-abc", "device_id": "dev-123"}]},
+        }
+        rtr_module.falcon.pulse_session.return_value = {
+            "status_code": 201,
+            "body": {
+                "resources": [
+                    {"session_id": "sess-abc", "device_id": "dev-123"}
+                ]
+            },
+        }
+        result = asyncio.run(rtr_module.rtr_pulse_session(session_id="sess-abc"))
+        assert "sess-abc" in result
+        assert "refreshed" in result.lower() or "pulsed" in result.lower()
+
+    def test_falconpy_called_with_device_id_from_session(self, rtr_module):
+        # pulse_session needs device_id — we must resolve it first from the session
+        rtr_module.falcon.list_sessions.return_value = {
+            "status_code": 200,
+            "body": {"resources": [{"id": "sess-abc", "device_id": "dev-xyz"}]},
+        }
+        rtr_module.falcon.pulse_session.return_value = {
+            "status_code": 201,
+            "body": {"resources": [{"session_id": "sess-abc", "device_id": "dev-xyz"}]},
+        }
+        asyncio.run(rtr_module.rtr_pulse_session(session_id="sess-abc"))
+        rtr_module.falcon.pulse_session.assert_called_once_with(device_id="dev-xyz")
+
+    def test_requires_session_id(self, rtr_module):
+        result = asyncio.run(rtr_module.rtr_pulse_session(session_id=""))
+        assert "session_id" in result.lower()
+
+    def test_reports_when_session_not_found(self, rtr_module):
+        rtr_module.falcon.list_sessions.return_value = {
+            "status_code": 200, "body": {"resources": []},
+        }
+        result = asyncio.run(rtr_module.rtr_pulse_session(session_id="sess-missing"))
+        assert "not found" in result.lower() or "unknown" in result.lower()
+
+    def test_handles_pulse_api_error(self, rtr_module):
+        rtr_module.falcon.list_sessions.return_value = {
+            "status_code": 200,
+            "body": {"resources": [{"id": "sess-abc", "device_id": "dev-1"}]},
+        }
+        rtr_module.falcon.pulse_session.return_value = {
+            "status_code": 500,
+            "body": {"errors": [{"message": "boom"}]},
+        }
+        result = asyncio.run(rtr_module.rtr_pulse_session(session_id="sess-abc"))
+        assert "failed" in result.lower()

@@ -130,6 +130,16 @@ class RTRModule(BaseModule):
                 "sessions owned by the calling user."
             ),
         )
+        self._add_tool(
+            server,
+            self.rtr_pulse_session,
+            name="rtr_pulse_session",
+            description=(
+                "Keep an RTR session alive (resets the 10-minute idle timeout). "
+                "Use during long-running triage where you're waiting on analyst "
+                "review between commands."
+            ),
+        )
 
     # ------------------------------------------------------------------
     # Tools
@@ -192,6 +202,22 @@ class RTRModule(BaseModule):
                 lines.append("")
         return format_text_response("\n".join(lines), raw=True)
 
+    async def rtr_pulse_session(
+        self,
+        session_id: Annotated[str, "RTR session ID to keep alive"],
+    ) -> str:
+        """Refresh a session's idle timeout (otherwise expires after 10 min)."""
+        result = self._pulse_session(session_id)
+        if not result.get("success"):
+            return format_text_response(
+                f"Failed to pulse RTR session: {result.get('error')}", raw=True
+            )
+        s = result["session"]
+        return format_text_response(
+            f"Session {s.get('session_id', session_id)} refreshed on {s.get('device_id', '?')}",
+            raw=True,
+        )
+
     # ------------------------------------------------------------------
     # Internal helpers (one per tool)
     # ------------------------------------------------------------------
@@ -232,6 +258,48 @@ class RTRModule(BaseModule):
             return {"success": True, "sessions": r.get("body", {}).get("resources", [])}
         except Exception as e:
             return {"success": False, "error": f"Error listing RTR sessions: {e}"}
+
+    def _pulse_session(self, session_id: str):
+        if not session_id:
+            return {"success": False, "error": "session_id is required"}
+        # Resolve device_id via list_sessions (pulse_session requires device_id).
+        try:
+            svc = self._service(RealTimeResponse)
+            lookup = svc.list_sessions(ids=[session_id])
+            if lookup["status_code"] != 200:
+                return {
+                    "success": False,
+                    "error": format_api_error(
+                        lookup, "Failed to look up session", operation="RTR_ListSessions"
+                    ),
+                }
+            resources = lookup.get("body", {}).get("resources", [])
+            if not resources:
+                return {
+                    "success": False,
+                    "error": f"Session {session_id} not found (may have expired or is owned by another user)",
+                }
+            device_id = resources[0].get("device_id")
+            if not device_id:
+                return {"success": False, "error": f"Session {session_id} has no device_id"}
+
+            r = svc.pulse_session(device_id=device_id)
+            if not (200 <= r.get("status_code", 0) < 300):
+                return {
+                    "success": False,
+                    "error": format_api_error(
+                        r, "Failed to pulse RTR session", operation="RTR_PulseSession"
+                    ),
+                }
+            pulsed = r.get("body", {}).get("resources", [])
+            return {
+                "success": True,
+                "session": pulsed[0]
+                if pulsed
+                else {"session_id": session_id, "device_id": device_id},
+            }
+        except Exception as e:
+            return {"success": False, "error": f"Error pulsing RTR session: {e}"}
 
     # ------------------------------------------------------------------
     # Allowlist + audit helpers
