@@ -554,9 +554,9 @@ class TestRiskTimelineFilters:
             "status_code": 200,
             "body": SAMPLE_TIMELINE_BODY,
         }
-        # Drop everything before 2026-04-01 → ri-200 has no remaining events (all before)
+        # Drop everything before 2026-04-15 → ri-200 has no remaining events (all March)
         # and ri-100 keeps one event (2026-04-18). ri-200 should be removed entirely.
-        result = cloud_module._get_risk_timeline(asset_id="crn:x", since="2026-04-01T00:00:00Z")
+        result = cloud_module._get_risk_timeline(asset_id="crn:x", since="2026-04-15T00:00:00Z")
         ri_ids = {r["id"] for r in result["risks"]}
         assert ri_ids == {"ri-100"}
         ri100 = result["risks"][0]
