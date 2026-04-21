@@ -41,6 +41,13 @@ try:
 except ImportError:
     ASSETS_AVAILABLE = False
 
+try:
+    from falconpy import APIHarnessV2
+
+    HARNESS_AVAILABLE = True
+except ImportError:
+    HARNESS_AVAILABLE = False
+
 
 class CloudSecurityModule(BaseModule):
     """Cloud security posture and detection data."""
