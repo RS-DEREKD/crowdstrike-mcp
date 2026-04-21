@@ -59,6 +59,26 @@ TIMELINE_OPERATION_ID = "GetCloudRisksEnrichedTimeline"
 TIMELINE_OVERRIDE = "GET,/cloud-security-timeline/entities/cloud-risks-enriched-timeline/v1"
 
 
+def _apply_since_to_risks(risks: list[dict], since: str) -> list[dict]:
+    """Drop risk events older than ``since``; drop risk instances that become empty."""
+    out: list[dict] = []
+    for r in risks:
+        kept = [e for e in r["events"] if e["occurred_at"] >= since]
+        if kept:
+            out.append({**r, "events": kept})
+    return out
+
+
+def _apply_since_to_changes(changes: list[dict], since: str) -> list[dict]:
+    """Drop configuration_change resource_events older than ``since``; drop changes that become empty."""
+    out: list[dict] = []
+    for c in changes:
+        kept = [ev for ev in c["resource_events"] if ev["timestamp"] >= since]
+        if kept:
+            out.append({**c, "resource_events": kept})
+    return out
+
+
 class CloudSecurityModule(BaseModule):
     """Cloud security posture and detection data."""
 
@@ -618,6 +638,14 @@ class CloudSecurityModule(BaseModule):
                         ],
                     }
                 )
+
+            # --- Client-side filters ---
+            if risk_id is not None:
+                risks = [r for r in risks if r["id"] == risk_id]
+
+            if since is not None:
+                risks = _apply_since_to_risks(risks, since)
+                changes = _apply_since_to_changes(changes, since)
 
             return {
                 "success": True,

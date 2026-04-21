@@ -221,20 +221,69 @@ class TestGetRiskTimelineProjection:
         assert kwargs.get("override", "").startswith("GET,/cloud-security-timeline")
         assert kwargs.get("parameters", {}).get("id") == "crn:example"
 
-    def test_unused_params_accepted_as_noop_in_task3(self, cloud_module):
-        """risk_id/since/full/max_results accepted but not yet applied (Tasks 4-6 wire them)."""
+    def test_full_and_max_results_still_unused_in_projection(self, cloud_module):
+        """full=True and max_results have no effect on _get_risk_timeline projection itself.
+
+        They're consumed by cloud_get_risk_timeline (Task 6) and _build_merged_timeline
+        (Task 5) respectively; the projection layer ignores them.
+        """
         cloud_module.harness.command.return_value = {
             "status_code": 200,
             "body": SAMPLE_TIMELINE_BODY,
         }
         result = cloud_module._get_risk_timeline(
             asset_id="crn:x",
-            risk_id="ri-100",
-            since="2099-01-01T00:00:00Z",
             full=True,
             max_results=1,
         )
-        # All parameters silently ignored in Task 3 — full fixture contents still projected.
+        # Full fixture still projects — full/max_results unused at this layer.
         assert result["success"] is True
         assert result["total_risks"] == 2
         assert result["total_changes"] == 2
+
+
+class TestRiskTimelineFilters:
+    """Client-side filter behaviour."""
+
+    def test_risk_id_filter_keeps_only_matching_instance(self, cloud_module):
+        cloud_module.harness.command.return_value = {
+            "status_code": 200,
+            "body": SAMPLE_TIMELINE_BODY,
+        }
+        result = cloud_module._get_risk_timeline(asset_id="crn:x", risk_id="ri-100")
+        assert result["total_risks"] == 1
+        assert result["risks"][0]["id"] == "ri-100"
+        # Changes untouched by risk_id filter
+        assert result["total_changes"] == 2
+
+    def test_risk_id_filter_no_match_yields_empty_risks(self, cloud_module):
+        cloud_module.harness.command.return_value = {
+            "status_code": 200,
+            "body": SAMPLE_TIMELINE_BODY,
+        }
+        result = cloud_module._get_risk_timeline(asset_id="crn:x", risk_id="ri-nope")
+        assert result["success"] is True
+        assert result["total_risks"] == 0
+        assert result["risks"] == []
+
+    def test_since_drops_older_risk_events(self, cloud_module):
+        cloud_module.harness.command.return_value = {
+            "status_code": 200,
+            "body": SAMPLE_TIMELINE_BODY,
+        }
+        # Drop everything before 2026-04-15 → ri-200 has no remaining events (all March)
+        # and ri-100 keeps one event (2026-04-18). ri-200 should be removed entirely.
+        result = cloud_module._get_risk_timeline(asset_id="crn:x", since="2026-04-15T00:00:00Z")
+        ri_ids = {r["id"] for r in result["risks"]}
+        assert ri_ids == {"ri-100"}
+        ri100 = result["risks"][0]
+        assert len(ri100["events"]) == 1
+        assert ri100["events"][0]["occurred_at"] == "2026-04-18T09:12:00Z"
+
+    def test_since_drops_older_configuration_changes(self, cloud_module):
+        cloud_module.harness.command.return_value = {
+            "status_code": 200,
+            "body": SAMPLE_TIMELINE_BODY,
+        }
+        result = cloud_module._get_risk_timeline(asset_id="crn:x", since="2026-04-15T00:00:00Z")
+        assert {c["id"] for c in result["changes"]} == {"cc-002"}
