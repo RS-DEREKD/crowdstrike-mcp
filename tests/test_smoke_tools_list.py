@@ -61,6 +61,7 @@ EXPECTED_READ_TOOLS = {
     "cloud_get_iom_detections",
     "cloud_query_assets",
     "cloud_compliance_by_account",
+    "cloud_get_risk_timeline",
     "case_query_access_tags",
     "case_get_access_tags",
     "case_aggregate_access_tags",
@@ -111,7 +112,11 @@ def _patch_falconpy():
         patch.multiple("crowdstrike_mcp.modules.case_management", CaseManagement=MagicMock()),
         patch.multiple("crowdstrike_mcp.modules.cloud_registration", CSPMRegistration=MagicMock()),
         patch.multiple(
-            "crowdstrike_mcp.modules.cloud_security", CloudSecurity=MagicMock(), CloudSecurityDetections=MagicMock(), CloudSecurityAssets=MagicMock()
+            "crowdstrike_mcp.modules.cloud_security",
+            CloudSecurity=MagicMock(),
+            CloudSecurityDetections=MagicMock(),
+            CloudSecurityAssets=MagicMock(),
+            APIHarnessV2=MagicMock(),
         ),
         patch.multiple("crowdstrike_mcp.modules.correlation", CorrelationRules=MagicMock(), APIHarnessV2=MagicMock()),
         patch.multiple("crowdstrike_mcp.modules.hosts", Hosts=MagicMock()),

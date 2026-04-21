@@ -1,11 +1,12 @@
 """
-Cloud Security Module — cloud risks, IOM detections, assets, and compliance.
+Cloud Security Module — cloud risks, IOM detections, assets, compliance, and timelines.
 
 Tools:
-  cloud_get_risks            — Cloud security risks ranked by score
-  cloud_get_iom_detections   — IOM detections with MITRE and remediation
-  cloud_query_assets         — Cloud asset inventory across providers
+  cloud_get_risks             — Cloud security risks ranked by score
+  cloud_get_iom_detections    — IOM detections with MITRE and remediation
+  cloud_query_assets          — Cloud asset inventory across providers
   cloud_compliance_by_account — Compliance posture by account/region
+  cloud_get_risk_timeline     — Enriched risk/change timeline for one asset (GCRN)
 """
 
 from __future__ import annotations
@@ -226,6 +227,18 @@ class CloudSecurityModule(BaseModule):
             name="cloud_compliance_by_account",
             description=("Get compliance posture aggregated by account and region. Shows compliance control results with resource counts and severities."),
         )
+        if HARNESS_AVAILABLE:
+            self._add_tool(
+                server,
+                self.cloud_get_risk_timeline,
+                name="cloud_get_risk_timeline",
+                description=(
+                    "Retrieve the Falcon Cloud Security enriched timeline for a cloud "
+                    "asset by GCRN: risk-instance history (open/close/reopen events), "
+                    "configuration changes, and the actors behind them. Answers "
+                    "'how did this risk get here?' for a single asset."
+                ),
+            )
 
     # ------------------------------------------------------------------
     # Tools

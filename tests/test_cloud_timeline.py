@@ -557,3 +557,29 @@ class TestCloudGetRiskTimelineFormatting:
         # ri-100's rule name must appear; ri-200's must not.
         assert "S3 bucket publicly accessible" in out
         assert "S3 bucket missing encryption" not in out
+
+
+class TestCloudTimelineRegistration:
+    def test_tool_registers_as_read_when_harness_available(self, cloud_module):
+        server = MagicMock()
+        server.tool.return_value = lambda fn: fn
+        cloud_module.register_tools(server)
+        assert "cloud_get_risk_timeline" in cloud_module.tools
+
+    def test_tool_not_registered_when_harness_unavailable(self, mock_client):
+        # Patch HARNESS_AVAILABLE to False and verify the tool is skipped
+        with patch("crowdstrike_mcp.modules.cloud_security.CloudSecurity") as MockCS, \
+             patch("crowdstrike_mcp.modules.cloud_security.CloudSecurityDetections") as MockCSD, \
+             patch("crowdstrike_mcp.modules.cloud_security.CloudSecurityAssets") as MockCSA, \
+             patch("crowdstrike_mcp.modules.cloud_security.HARNESS_AVAILABLE", False):
+            MockCS.return_value = MagicMock()
+            MockCSD.return_value = MagicMock()
+            MockCSA.return_value = MagicMock()
+            from crowdstrike_mcp.modules.cloud_security import CloudSecurityModule
+            module = CloudSecurityModule(mock_client)
+            server = MagicMock()
+            server.tool.return_value = lambda fn: fn
+            module.register_tools(server)
+            assert "cloud_get_risk_timeline" not in module.tools
+            # Other tools still registered
+            assert "cloud_get_risks" in module.tools
