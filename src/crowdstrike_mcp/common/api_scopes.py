@@ -64,6 +64,17 @@ OPERATION_SCOPES = {
     "get_vulnerabilities": ["spotlight-vulnerabilities:read"],
     "query_vulnerabilities_combined": ["spotlight-vulnerabilities:read"],
     "get_remediations_v2": ["spotlight-vulnerabilities:read"],
+    # Identity Protection
+    # NOTE: post_graphql is a read-only query in this module, but CrowdStrike's
+    # API surface requires identity-protection-graphql:write for ALL GraphQL
+    # calls even when the query is strictly read-only. Tool stays tier="read".
+    "post_graphql": [
+        "identity-protection-assessment:read",
+        "identity-protection-detections:read",
+        "identity-protection-entities:read",
+        "identity-protection-timeline:read",
+        "identity-protection-graphql:write",
+    ],
     # CAO Hunting
     "search_queries": ["cao-hunting:read"],
     "get_queries": ["cao-hunting:read"],
