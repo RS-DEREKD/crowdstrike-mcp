@@ -518,3 +518,109 @@ class CloudSecurityModule(BaseModule):
             return {"success": True, "compliance": entries, "count": len(entries), "total": total}
         except Exception as e:
             return {"success": False, "error": f"Error getting compliance: {e}"}
+
+    def _get_risk_timeline(self, asset_id, risk_id=None, since=None, full=False, max_results=50):
+        if not HARNESS_AVAILABLE:
+            return {"success": False, "error": "APIHarnessV2 client not available"}
+        try:
+            harness = self._service(APIHarnessV2)
+            r = harness.command(
+                override=TIMELINE_OVERRIDE,
+                parameters={"id": asset_id},
+            )
+
+            if r["status_code"] != 200:
+                err = format_api_error(
+                    r,
+                    "Failed to get cloud risk timeline",
+                    operation=TIMELINE_OPERATION_ID,
+                )
+                if r["status_code"] == 429:
+                    err += "\n\nRate limit: this endpoint allows 500 requests/min per CID."
+                return {"success": False, "error": err}
+
+            resources = r.get("body", {}).get("resources", [])
+            if not resources:
+                return {
+                    "success": False,
+                    "error": (
+                        f"No timeline found for GCRN '{asset_id}' "
+                        "(feature may not be enabled on this tenant or GCRN is unknown)."
+                    ),
+                }
+
+            entry = resources[0]
+            a = entry.get("asset", {}) or {}
+            tl = entry.get("timeline", {}) or {}
+
+            asset = {
+                "id": a.get("id", ""),
+                "cloud_provider": a.get("cloud_provider", ""),
+                "account_id": a.get("account_id", ""),
+                "account_name": a.get("account_name", ""),
+                "region": a.get("region", ""),
+                "resource_id": a.get("resource_id", ""),
+                "type": a.get("type", ""),
+            }
+
+            risks = []
+            for ri in (tl.get("risks", {}) or {}).get("risk_instances", []) or []:
+                risks.append(
+                    {
+                        "id": ri.get("id", ""),
+                        "rule_name": ri.get("rule_name", ""),
+                        "severity": ri.get("severity", ""),
+                        "current_status": ri.get("current_status", ""),
+                        "reason": ri.get("reason", ""),
+                        "first_seen": ri.get("first_seen", ""),
+                        "last_seen": ri.get("last_seen", ""),
+                        "resolved_at": ri.get("resolved_at"),
+                        "risk_factors_categories": ri.get("risk_factors_categories", []),
+                        "events": [
+                            {
+                                "event_type": e.get("event_type", ""),
+                                "occurred_at": e.get("occurred_at", ""),
+                            }
+                            for e in (ri.get("events") or [])
+                        ],
+                    }
+                )
+
+            changes = []
+            for cc in tl.get("configuration_changes", []) or []:
+                changes.append(
+                    {
+                        "id": cc.get("id", ""),
+                        "asset_revision": cc.get("asset_revision", 0),
+                        "external_asset_type": cc.get("external_asset_type", ""),
+                        "updated_at": cc.get("updated_at", ""),
+                        "changes": [
+                            {
+                                "action": ch.get("action", ""),
+                                "attribute": ch.get("attribute", ""),
+                            }
+                            for ch in (cc.get("changes") or [])
+                        ],
+                        "resource_events": [
+                            {
+                                "event_name": ev.get("event_name", ""),
+                                "timestamp": ev.get("timestamp", ""),
+                                "user_id": ev.get("user_id", ""),
+                                "user_name": ev.get("user_name", ""),
+                            }
+                            for ev in (cc.get("resource_events") or [])
+                        ],
+                    }
+                )
+
+            return {
+                "success": True,
+                "asset": asset,
+                "risks": risks,
+                "changes": changes,
+                "timeline": [],  # populated in Task 5
+                "total_risks": len(risks),
+                "total_changes": len(changes),
+            }
+        except Exception as e:
+            return {"success": False, "error": f"Error getting cloud risk timeline: {e}"}
