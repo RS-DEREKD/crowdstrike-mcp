@@ -242,3 +242,78 @@ class TestThreatGraphGetVertices:
             )
         )
         assert "threatgraph:read" in result.lower() or "threatgraph" in result.lower()
+
+
+class TestThreatGraphGetEdges:
+    def test_returns_edges(self, threatgraph_module):
+        threatgraph_module.falcon.get_edges.return_value = {
+            "status_code": 200,
+            "body": {"resources": [
+                {"source_vertex_id": "pid:aaa:111", "target_vertex_id": "pid:bbb:222"}
+            ]},
+        }
+        result = asyncio.run(
+            threatgraph_module.threatgraph_get_edges(
+                ids=["pid:aaa:111"], edge_type="wrote_file"
+            )
+        )
+        assert "pid:aaa:111" in result
+        assert "pid:bbb:222" in result
+
+    def test_passes_args_to_falconpy(self, threatgraph_module):
+        threatgraph_module.falcon.get_edges.return_value = {
+            "status_code": 200, "body": {"resources": []},
+        }
+        asyncio.run(
+            threatgraph_module.threatgraph_get_edges(
+                ids=["x"], edge_type="wrote_file", direction="primary",
+                scope="customer", limit=50, offset="tok", nano=True,
+            )
+        )
+        kwargs = threatgraph_module.falcon.get_edges.call_args.kwargs
+        assert kwargs["ids"] == ["x"]
+        assert kwargs["edge_type"] == "wrote_file"
+        assert kwargs["direction"] == "primary"
+        assert kwargs["scope"] == "customer"
+        assert kwargs["limit"] == 50
+        assert kwargs["offset"] == "tok"
+        assert kwargs["nano"] is True
+
+    def test_default_limit_is_100(self, threatgraph_module):
+        threatgraph_module.falcon.get_edges.return_value = {
+            "status_code": 200, "body": {"resources": []},
+        }
+        asyncio.run(
+            threatgraph_module.threatgraph_get_edges(ids=["x"], edge_type="wrote_file")
+        )
+        kwargs = threatgraph_module.falcon.get_edges.call_args.kwargs
+        assert kwargs["limit"] == 100
+
+    def test_limit_above_1000_rejected_before_api_call(self, threatgraph_module):
+        result = asyncio.run(
+            threatgraph_module.threatgraph_get_edges(
+                ids=["x"], edge_type="wrote_file", limit=1001
+            )
+        )
+        assert threatgraph_module.falcon.get_edges.call_count == 0
+        assert "1000" in result or "limit" in result.lower()
+
+    def test_direction_omitted_when_none(self, threatgraph_module):
+        threatgraph_module.falcon.get_edges.return_value = {
+            "status_code": 200, "body": {"resources": []},
+        }
+        asyncio.run(
+            threatgraph_module.threatgraph_get_edges(ids=["x"], edge_type="wrote_file")
+        )
+        kwargs = threatgraph_module.falcon.get_edges.call_args.kwargs
+        assert "direction" not in kwargs
+
+    def test_400_invalid_edge_type_appends_hint(self, threatgraph_module):
+        threatgraph_module.falcon.get_edges.return_value = {
+            "status_code": 400,
+            "body": {"errors": [{"message": "invalid edge_type 'bogus'"}]},
+        }
+        result = asyncio.run(
+            threatgraph_module.threatgraph_get_edges(ids=["x"], edge_type="bogus")
+        )
+        assert "threatgraph_get_edge_types" in result or "threatgraph-edge-types" in result

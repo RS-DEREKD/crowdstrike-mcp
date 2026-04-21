@@ -25,7 +25,7 @@ recipe.
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Annotated, Literal, Optional  # noqa: F401 — Optional used by tool methods added in later tasks
+from typing import TYPE_CHECKING, Annotated, Literal, Optional
 
 try:
     from falconpy import ThreatGraph
@@ -92,6 +92,20 @@ class ThreatGraphModule(BaseModule):
                 "scope defaults to 'device' (per-host)."
             ),
         )
+        self._add_tool(
+            server,
+            self.threatgraph_get_edges,
+            name="threatgraph_get_edges",
+            description=(
+                "Walk edges of one type out of (or into) a set of vertex IDs. "
+                "One edge_type per call; discover valid edge types via the "
+                "falcon://reference/threatgraph-edge-types resource or "
+                "threatgraph_get_edge_types tool. direction='primary' "
+                "walks outgoing edges, 'secondary' walks incoming, "
+                "None returns both. Defaults: limit=100, scope='device'; "
+                "hard cap limit<=1000 (page via offset)."
+            ),
+        )
 
     async def threatgraph_get_edge_types(self) -> str:
         """Refresh the edge-type cache and return the current list."""
@@ -138,6 +152,63 @@ class ThreatGraphModule(BaseModule):
             )
         except Exception as e:
             return format_text_response(f"Failed to get vertices: {e}", raw=True)
+
+    _MAX_LIMIT = 1000
+
+    async def threatgraph_get_edges(
+        self,
+        ids: Annotated[list[str], "Source vertex IDs"],
+        edge_type: Annotated[str, "Edge type (see falcon://reference/threatgraph-edge-types)"],
+        direction: Annotated[Optional[Literal["primary", "secondary"]], "Edge direction: primary=outgoing, secondary=incoming, None=both"] = None,
+        scope: Annotated[Literal["device", "customer", "global", "cspm", "cwpp"], "Query scope"] = "device",
+        limit: Annotated[int, "Max edges per call (default 100, max 1000)"] = 100,
+        offset: Annotated[Optional[str], "Pagination token from a prior call"] = None,
+        nano: Annotated[bool, "Return nano-precision timestamps"] = False,
+    ) -> str:
+        """Walk edges of one edge_type out of/into the given vertex IDs."""
+        if not ids:
+            return format_text_response("Failed: ids is required", raw=True)
+        if not edge_type:
+            return format_text_response("Failed: edge_type is required", raw=True)
+        if limit > self._MAX_LIMIT:
+            return format_text_response(
+                f"Failed: limit={limit} exceeds max {self._MAX_LIMIT}. "
+                f"Page through results using the offset argument.",
+                raw=True,
+            )
+        kwargs = {
+            "ids": ids,
+            "edge_type": edge_type,
+            "scope": scope,
+            "limit": limit,
+            "nano": nano,
+        }
+        if direction is not None:
+            kwargs["direction"] = direction
+        if offset:
+            kwargs["offset"] = offset
+        try:
+            falcon = self._service(ThreatGraph)
+            response = falcon.get_edges(**kwargs)
+            if response.get("status_code") != 200:
+                err = format_api_error(
+                    response,
+                    "Failed to get edges",
+                    operation="combined_edges_get",
+                )
+                hint = ""
+                if response.get("status_code") == 400:
+                    hint = (
+                        "\n\nHint: call `threatgraph_get_edge_types` or read "
+                        "`falcon://reference/threatgraph-edge-types` for the valid "
+                        "edge_type values."
+                    )
+                return format_text_response(f"Failed to get edges: {err}{hint}", raw=True)
+            return format_text_response(
+                _render_resources("Threat Graph Edges", response), raw=True
+            )
+        except Exception as e:
+            return format_text_response(f"Failed to get edges: {e}", raw=True)
 
     # -------- internal helpers --------
 
