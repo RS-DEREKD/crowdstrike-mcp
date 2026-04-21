@@ -86,6 +86,7 @@ EXPECTED_READ_TOOLS = {
     "get_stored_response",
     "list_stored_responses",
     "threatgraph_get_edge_types",
+    "threatgraph_get_vertices",
 }
 
 EXPECTED_WRITE_TOOLS = {

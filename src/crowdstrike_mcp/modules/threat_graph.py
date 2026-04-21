@@ -24,7 +24,8 @@ recipe.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Annotated, Literal, Optional  # noqa: F401 — used by tool methods added in later tasks
+import json
+from typing import TYPE_CHECKING, Annotated, Literal, Optional  # noqa: F401 — Optional used by tool methods added in later tasks
 
 try:
     from falconpy import ThreatGraph
@@ -78,6 +79,19 @@ class ThreatGraphModule(BaseModule):
                 "prefer reading the resource."
             ),
         )
+        self._add_tool(
+            server,
+            self.threatgraph_get_vertices,
+            name="threatgraph_get_vertices",
+            description=(
+                "Fetch Threat Graph vertex metadata by composite ID. Vertex IDs "
+                "take the form pid:<aid>:<offset_ns> for processes; other shapes "
+                "exist for files, users, etc. Recipe: from an alert payload, "
+                "assemble pid:<alert.device.device_id>:<alert.pattern_disposition_details.process_timestamp_ns>. "
+                "Use vertex_type=process|file|domain|ip_address|user|module|... ; "
+                "scope defaults to 'device' (per-host)."
+            ),
+        )
 
     async def threatgraph_get_edge_types(self) -> str:
         """Refresh the edge-type cache and return the current list."""
@@ -97,9 +111,54 @@ class ThreatGraphModule(BaseModule):
         except Exception as e:
             return format_text_response(f"Failed to get edge types: {e}", raw=True)
 
+    async def threatgraph_get_vertices(
+        self,
+        ids: Annotated[list[str], "Composite vertex IDs (e.g. ['pid:<aid>:<offset_ns>'])"],
+        vertex_type: Annotated[str, "Vertex type: process, file, domain, ip_address, user, module, etc."],
+        scope: Annotated[Literal["device", "customer", "global", "cspm", "cwpp"], "Query scope"] = "device",
+        nano: Annotated[bool, "Return nano-precision timestamps"] = False,
+    ) -> str:
+        """Fetch vertex metadata by composite ID (uses get_vertices_v2)."""
+        if not ids:
+            return format_text_response("Failed: ids is required", raw=True)
+        try:
+            falcon = self._service(ThreatGraph)
+            response = falcon.get_vertices_v2(
+                ids=ids, vertex_type=vertex_type, scope=scope, nano=nano,
+            )
+            if response.get("status_code") != 200:
+                err = format_api_error(
+                    response,
+                    "Failed to get vertices",
+                    operation="entities_vertices_getv2",
+                )
+                return format_text_response(f"Failed to get vertices: {err}", raw=True)
+            return format_text_response(
+                _render_resources("Threat Graph Vertices", response), raw=True
+            )
+        except Exception as e:
+            return format_text_response(f"Failed to get vertices: {e}", raw=True)
+
     # -------- internal helpers --------
 
     def _fetch_edge_types(self) -> dict:
         """Invoke ThreatGraph.get_edge_types(); used as the cache fetcher."""
         falcon = self._service(ThreatGraph)
         return falcon.get_edge_types()
+
+
+def _render_resources(header: str, response: dict) -> str:
+    body = response.get("body") or {}
+    resources = body.get("resources") or []
+    meta = body.get("meta") or {}
+    pagination = meta.get("pagination") or {}
+    lines = [f"{header}: {len(resources)} returned"]
+    if pagination.get("total") is not None:
+        lines[-1] += f" (total={pagination['total']})"
+    if pagination.get("offset"):
+        lines.append(f"Next offset: `{pagination['offset']}`")
+    lines.append("")
+    lines.append("```json")
+    lines.append(json.dumps(resources, indent=2, default=str))
+    lines.append("```")
+    return "\n".join(lines)

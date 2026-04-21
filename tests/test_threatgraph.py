@@ -180,3 +180,65 @@ class TestThreatGraphGetEdgeTypes:
         }
         result = asyncio.run(threatgraph_module.threatgraph_get_edge_types())
         assert "failed" in result.lower() or "forbidden" in result.lower()
+
+
+class TestThreatGraphGetVertices:
+    def test_returns_vertex_metadata(self, threatgraph_module):
+        threatgraph_module.falcon.get_vertices_v2.return_value = {
+            "status_code": 200,
+            "body": {"resources": [
+                {"id": "pid:aaa:111", "vertex_type": "process", "properties": {"name": "rclone.exe"}}
+            ]},
+        }
+        result = asyncio.run(
+            threatgraph_module.threatgraph_get_vertices(
+                ids=["pid:aaa:111"], vertex_type="process"
+            )
+        )
+        assert "pid:aaa:111" in result
+        assert "rclone.exe" in result
+
+    def test_passes_args_to_falconpy(self, threatgraph_module):
+        threatgraph_module.falcon.get_vertices_v2.return_value = {
+            "status_code": 200, "body": {"resources": []},
+        }
+        asyncio.run(
+            threatgraph_module.threatgraph_get_vertices(
+                ids=["pid:aaa:111"], vertex_type="process", scope="customer", nano=True
+            )
+        )
+        kwargs = threatgraph_module.falcon.get_vertices_v2.call_args.kwargs
+        assert kwargs["ids"] == ["pid:aaa:111"]
+        assert kwargs["vertex_type"] == "process"
+        assert kwargs["scope"] == "customer"
+        assert kwargs["nano"] is True
+
+    def test_default_scope_is_device(self, threatgraph_module):
+        threatgraph_module.falcon.get_vertices_v2.return_value = {
+            "status_code": 200, "body": {"resources": []},
+        }
+        asyncio.run(
+            threatgraph_module.threatgraph_get_vertices(
+                ids=["x"], vertex_type="process"
+            )
+        )
+        kwargs = threatgraph_module.falcon.get_vertices_v2.call_args.kwargs
+        assert kwargs["scope"] == "device"
+
+    def test_requires_ids(self, threatgraph_module):
+        result = asyncio.run(
+            threatgraph_module.threatgraph_get_vertices(ids=[], vertex_type="process")
+        )
+        assert "ids" in result.lower() or "required" in result.lower()
+
+    def test_403_includes_scope_guidance(self, threatgraph_module):
+        threatgraph_module.falcon.get_vertices_v2.return_value = {
+            "status_code": 403,
+            "body": {"errors": [{"message": "Forbidden"}]},
+        }
+        result = asyncio.run(
+            threatgraph_module.threatgraph_get_vertices(
+                ids=["pid:aaa:111"], vertex_type="process"
+            )
+        )
+        assert "threatgraph:read" in result.lower() or "threatgraph" in result.lower()
