@@ -81,10 +81,7 @@ class RTRModule(BaseModule):
     def __init__(self, client):
         super().__init__(client)
         if not RTR_AVAILABLE:
-            raise ImportError(
-                "falconpy.RealTimeResponse not available. "
-                "Ensure crowdstrike-falconpy >= 1.6.1 is installed."
-            )
+            raise ImportError("falconpy.RealTimeResponse not available. Ensure crowdstrike-falconpy >= 1.6.1 is installed.")
 
         # Load allowlist (hardcoded default + optional env-var extras, minus deny list).
         self._allowlist = self._load_allowlist()
@@ -191,16 +188,12 @@ class RTRModule(BaseModule):
     async def rtr_init_session(
         self,
         device_id: Annotated[str, "Falcon device/agent ID to open a session on (from host_lookup)"],
-        queue_offline: Annotated[
-            bool, "If the host is offline, queue the session and run on next check-in"
-        ] = False,
+        queue_offline: Annotated[bool, "If the host is offline, queue the session and run on next check-in"] = False,
     ) -> str:
         """Open an RTR session against a host so commands can be run on it."""
         result = self._init_session(device_id=device_id, queue_offline=queue_offline)
         if not result.get("success"):
-            return format_text_response(
-                f"Failed to init RTR session: {result.get('error')}", raw=True
-            )
+            return format_text_response(f"Failed to init RTR session: {result.get('error')}", raw=True)
         s = result["session"]
         lines = [
             f"RTR session opened on {s.get('device_id', device_id)}",
@@ -212,8 +205,7 @@ class RTRModule(BaseModule):
             lines.append(f"  created_at: {s['created_at']}")
         lines.append("")
         lines.append(
-            "Session auto-expires after 10 minutes idle. Use rtr_pulse_session "
-            "to keep it alive; use rtr_execute_command to run allowlisted commands."
+            "Session auto-expires after 10 minutes idle. Use rtr_pulse_session to keep it alive; use rtr_execute_command to run allowlisted commands."
         )
         return format_text_response("\n".join(lines), raw=True)
 
@@ -224,24 +216,18 @@ class RTRModule(BaseModule):
         """List metadata for one or more RTR session IDs."""
         result = self._list_sessions(ids)
         if not result.get("success"):
-            return format_text_response(
-                f"Failed to list RTR sessions: {result.get('error')}", raw=True
-            )
+            return format_text_response(f"Failed to list RTR sessions: {result.get('error')}", raw=True)
         sessions = result["sessions"]
         lines = [f"RTR Sessions: {len(sessions)} records", ""]
         if not sessions:
             lines.append("No sessions returned (ids may be unknown or owned by another user).")
         else:
             for i, s in enumerate(sessions, 1):
-                lines.append(
-                    f"{i}. {s.get('id', '?')} on {s.get('device_id', '?')}"
-                )
+                lines.append(f"{i}. {s.get('id', '?')} on {s.get('device_id', '?')}")
                 if s.get("pwd"):
                     lines.append(f"   pwd: {s['pwd']}")
                 if s.get("created_at") or s.get("updated_at"):
-                    lines.append(
-                        f"   created: {s.get('created_at', '?')} | updated: {s.get('updated_at', '?')}"
-                    )
+                    lines.append(f"   created: {s.get('created_at', '?')} | updated: {s.get('updated_at', '?')}")
                 lines.append("")
         return format_text_response("\n".join(lines), raw=True)
 
@@ -252,9 +238,7 @@ class RTRModule(BaseModule):
         """Refresh a session's idle timeout (otherwise expires after 10 min)."""
         result = self._pulse_session(session_id)
         if not result.get("success"):
-            return format_text_response(
-                f"Failed to pulse RTR session: {result.get('error')}", raw=True
-            )
+            return format_text_response(f"Failed to pulse RTR session: {result.get('error')}", raw=True)
         s = result["session"]
         return format_text_response(
             f"Session {s.get('session_id', session_id)} refreshed on {s.get('device_id', '?')}",
@@ -297,9 +281,7 @@ class RTRModule(BaseModule):
             command_string=command_string,
         )
         if not result.get("success"):
-            return format_text_response(
-                f"Failed to execute RTR command: {result.get('error')}", raw=True
-            )
+            return format_text_response(f"Failed to execute RTR command: {result.get('error')}", raw=True)
         r = result["resource"]
         lines = [
             "RTR command submitted.",
@@ -309,9 +291,7 @@ class RTRModule(BaseModule):
         if r.get("queued_command_offline"):
             lines.append("  queued_command_offline: True (will run on next check-in)")
         lines.append("")
-        lines.append(
-            "Poll rtr_check_command_status(cloud_request_id, session_id) for output."
-        )
+        lines.append("Poll rtr_check_command_status(cloud_request_id, session_id) for output.")
         return format_text_response("\n".join(lines), raw=True)
 
     async def rtr_check_command_status(
@@ -320,13 +300,9 @@ class RTRModule(BaseModule):
         session_id: Annotated[str, "RTR session ID the command ran in"],
     ) -> str:
         """Poll a submitted RTR command for completion + stdout/stderr."""
-        result = self._check_command_status(
-            cloud_request_id=cloud_request_id, session_id=session_id
-        )
+        result = self._check_command_status(cloud_request_id=cloud_request_id, session_id=session_id)
         if not result.get("success"):
-            return format_text_response(
-                f"Failed to check RTR command status: {result.get('error')}", raw=True
-            )
+            return format_text_response(f"Failed to check RTR command status: {result.get('error')}", raw=True)
         r = result["resource"]
         complete = bool(r.get("complete", False))
         stdout = r.get("stdout", "") or ""
@@ -350,21 +326,15 @@ class RTRModule(BaseModule):
         """List files pulled via `getfile` in this session."""
         result = self._list_files(session_id)
         if not result.get("success"):
-            return format_text_response(
-                f"Failed to list RTR session files: {result.get('error')}", raw=True
-            )
+            return format_text_response(f"Failed to list RTR session files: {result.get('error')}", raw=True)
         files = result["files"]
         lines = [f"RTR Session Files: {len(files)} records", ""]
         if not files:
             lines.append("No files have been pulled in this session. Use `getfile` first.")
         else:
             for i, f in enumerate(files, 1):
-                lines.append(
-                    f"{i}. **{f.get('name', '?')}** — sha256: {f.get('sha256', '?')}"
-                )
-                lines.append(
-                    f"   size: {f.get('size', '?')} | created: {f.get('created_at', '?')}"
-                )
+                lines.append(f"{i}. **{f.get('name', '?')}** — sha256: {f.get('sha256', '?')}")
+                lines.append(f"   size: {f.get('size', '?')} | created: {f.get('created_at', '?')}")
                 lines.append("")
         return format_text_response("\n".join(lines), raw=True)
 
@@ -378,13 +348,9 @@ class RTRModule(BaseModule):
         ] = None,
     ) -> str:
         """Download a pulled file to a local 7z (password `infected`)."""
-        result = self._get_extracted_file_contents(
-            session_id=session_id, sha256=sha256, filename=filename
-        )
+        result = self._get_extracted_file_contents(session_id=session_id, sha256=sha256, filename=filename)
         if not result.get("success"):
-            return format_text_response(
-                f"Failed to get extracted file contents: {result.get('error')}", raw=True
-            )
+            return format_text_response(f"Failed to get extracted file contents: {result.get('error')}", raw=True)
         path = result["path"]
         size = result["size"]
         lines = [
@@ -409,9 +375,7 @@ class RTRModule(BaseModule):
             if not (200 <= status < 300):
                 return {
                     "success": False,
-                    "error": format_api_error(
-                        r, "Failed to init RTR session", operation="RTR_InitSession"
-                    ),
+                    "error": format_api_error(r, "Failed to init RTR session", operation="RTR_InitSession"),
                 }
             resources = r.get("body", {}).get("resources", [])
             session = resources[0] if resources else {}
@@ -428,9 +392,7 @@ class RTRModule(BaseModule):
             if r["status_code"] != 200:
                 return {
                     "success": False,
-                    "error": format_api_error(
-                        r, "Failed to list RTR sessions", operation="RTR_ListSessions"
-                    ),
+                    "error": format_api_error(r, "Failed to list RTR sessions", operation="RTR_ListSessions"),
                 }
             return {"success": True, "sessions": r.get("body", {}).get("resources", [])}
         except Exception as e:
@@ -446,9 +408,7 @@ class RTRModule(BaseModule):
             if lookup["status_code"] != 200:
                 return {
                     "success": False,
-                    "error": format_api_error(
-                        lookup, "Failed to look up session", operation="RTR_ListSessions"
-                    ),
+                    "error": format_api_error(lookup, "Failed to look up session", operation="RTR_ListSessions"),
                 }
             resources = lookup.get("body", {}).get("resources", [])
             if not resources:
@@ -464,16 +424,12 @@ class RTRModule(BaseModule):
             if not (200 <= r.get("status_code", 0) < 300):
                 return {
                     "success": False,
-                    "error": format_api_error(
-                        r, "Failed to pulse RTR session", operation="RTR_PulseSession"
-                    ),
+                    "error": format_api_error(r, "Failed to pulse RTR session", operation="RTR_PulseSession"),
                 }
             pulsed = r.get("body", {}).get("resources", [])
             return {
                 "success": True,
-                "session": pulsed[0]
-                if pulsed
-                else {"session_id": session_id, "device_id": device_id},
+                "session": pulsed[0] if pulsed else {"session_id": session_id, "device_id": device_id},
             }
         except Exception as e:
             return {"success": False, "error": f"Error pulsing RTR session: {e}"}
@@ -540,9 +496,7 @@ class RTRModule(BaseModule):
             return {"success": False, "error": "session_id is required"}
         try:
             svc = self._service(RealTimeResponse)
-            r = svc.check_active_responder_command_status(
-                cloud_request_id=cloud_request_id, session_id=session_id
-            )
+            r = svc.check_active_responder_command_status(cloud_request_id=cloud_request_id, session_id=session_id)
             if r["status_code"] != 200:
                 return {
                     "success": False,
@@ -566,9 +520,7 @@ class RTRModule(BaseModule):
             if r["status_code"] != 200:
                 return {
                     "success": False,
-                    "error": format_api_error(
-                        r, "Failed to list RTR files", operation="RTR_ListFilesV2"
-                    ),
+                    "error": format_api_error(r, "Failed to list RTR files", operation="RTR_ListFilesV2"),
                 }
             return {"success": True, "files": r.get("body", {}).get("resources", [])}
         except Exception as e:
@@ -635,16 +587,10 @@ class RTRModule(BaseModule):
         if bc in HARD_DENIED_BASE_COMMANDS:
             return f"base_command '{bc}' is hard-denied by this MCP"
         if bc not in self._allowlist:
-            return (
-                f"base_command '{bc}' is not in the allowlist. "
-                f"Allowed: {sorted(self._allowlist)}"
-            )
+            return f"base_command '{bc}' is not in the allowlist. Allowed: {sorted(self._allowlist)}"
         # command_string must start with the base_command (case-insensitive).
         if not cs.lower().startswith(bc):
-            return (
-                f"command_string must start with base_command. "
-                f"Got base_command='{bc}', command_string='{cs}'"
-            )
+            return f"command_string must start with base_command. Got base_command='{bc}', command_string='{cs}'"
         return None
 
     def _write_audit_log(

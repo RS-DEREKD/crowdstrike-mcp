@@ -32,6 +32,7 @@ class TestRTRScopes:
 class TestRTRModuleImport:
     def test_module_imports(self):
         from crowdstrike_mcp.modules.rtr import RTRModule
+
         assert RTRModule is not None
 
     def test_module_uses_real_time_response(self, mock_client):
@@ -74,6 +75,7 @@ class TestRTRAllowlist:
         monkeypatch.setenv("CROWDSTRIKE_MCP_RTR_EXTRA_ALLOWED", "tasklist, whoami")
         with patch("crowdstrike_mcp.modules.rtr.RealTimeResponse"):
             from crowdstrike_mcp.modules.rtr import RTRModule
+
             m = RTRModule(mock_client)
             assert "tasklist" in m._allowlist
             assert "whoami" in m._allowlist
@@ -82,6 +84,7 @@ class TestRTRAllowlist:
         monkeypatch.setenv("CROWDSTRIKE_MCP_RTR_EXTRA_ALLOWED", "rm, put, runscript")
         with patch("crowdstrike_mcp.modules.rtr.RealTimeResponse"):
             from crowdstrike_mcp.modules.rtr import RTRModule
+
             m = RTRModule(mock_client)
             assert "rm" not in m._allowlist
             assert "put" not in m._allowlist
@@ -110,11 +113,7 @@ class TestRTRInitSession:
     def test_returns_session_id(self, rtr_module):
         rtr_module.falcon.init_session.return_value = {
             "status_code": 201,
-            "body": {
-                "resources": [
-                    {"session_id": "sess-abc", "device_id": "dev-123", "pwd": "/"}
-                ]
-            },
+            "body": {"resources": [{"session_id": "sess-abc", "device_id": "dev-123", "pwd": "/"}]},
         }
         result = asyncio.run(rtr_module.rtr_init_session(device_id="dev-123"))
         assert "sess-abc" in result
@@ -125,12 +124,8 @@ class TestRTRInitSession:
             "status_code": 201,
             "body": {"resources": [{"session_id": "s", "device_id": "dev-123"}]},
         }
-        asyncio.run(
-            rtr_module.rtr_init_session(device_id="dev-123", queue_offline=True)
-        )
-        rtr_module.falcon.init_session.assert_called_once_with(
-            device_id="dev-123", queue_offline=True
-        )
+        asyncio.run(rtr_module.rtr_init_session(device_id="dev-123", queue_offline=True))
+        rtr_module.falcon.init_session.assert_called_once_with(device_id="dev-123", queue_offline=True)
 
     def test_default_queue_offline_false(self, rtr_module):
         rtr_module.falcon.init_session.return_value = {
@@ -176,7 +171,8 @@ class TestRTRListSessions:
 
     def test_passes_ids_to_falconpy(self, rtr_module):
         rtr_module.falcon.list_sessions.return_value = {
-            "status_code": 200, "body": {"resources": []},
+            "status_code": 200,
+            "body": {"resources": []},
         }
         asyncio.run(rtr_module.rtr_list_sessions(ids=["a", "b", "c"]))
         rtr_module.falcon.list_sessions.assert_called_once_with(ids=["a", "b", "c"])
@@ -202,11 +198,7 @@ class TestRTRPulseSession:
         }
         rtr_module.falcon.pulse_session.return_value = {
             "status_code": 201,
-            "body": {
-                "resources": [
-                    {"session_id": "sess-abc", "device_id": "dev-123"}
-                ]
-            },
+            "body": {"resources": [{"session_id": "sess-abc", "device_id": "dev-123"}]},
         }
         result = asyncio.run(rtr_module.rtr_pulse_session(session_id="sess-abc"))
         assert "sess-abc" in result
@@ -231,7 +223,8 @@ class TestRTRPulseSession:
 
     def test_reports_when_session_not_found(self, rtr_module):
         rtr_module.falcon.list_sessions.return_value = {
-            "status_code": 200, "body": {"resources": []},
+            "status_code": 200,
+            "body": {"resources": []},
         }
         result = asyncio.run(rtr_module.rtr_pulse_session(session_id="sess-missing"))
         assert "not found" in result.lower() or "unknown" in result.lower()
@@ -313,11 +306,7 @@ class TestRTRExecuteCommand:
     def test_writes_audit_log_on_success(self, rtr_module):
         rtr_module.falcon.execute_active_responder_command.return_value = {
             "status_code": 201,
-            "body": {
-                "resources": [
-                    {"cloud_request_id": "req-42", "session_id": "sess-abc"}
-                ]
-            },
+            "body": {"resources": [{"cloud_request_id": "req-42", "session_id": "sess-abc"}]},
         }
         asyncio.run(
             rtr_module.rtr_execute_command(
@@ -359,7 +348,8 @@ class TestRTRExecuteCommand:
 
     def test_passes_all_args_to_falconpy(self, rtr_module):
         rtr_module.falcon.execute_active_responder_command.return_value = {
-            "status_code": 201, "body": {"resources": [{"cloud_request_id": "r"}]},
+            "status_code": 201,
+            "body": {"resources": [{"cloud_request_id": "r"}]},
         }
         asyncio.run(
             rtr_module.rtr_execute_command(
@@ -382,8 +372,10 @@ class TestRTRExecuteCommand:
         }
         result = asyncio.run(
             rtr_module.rtr_execute_command(
-                session_id="s", device_id="d",
-                base_command="ps", command_string="ps",
+                session_id="s",
+                device_id="d",
+                base_command="ps",
+                command_string="ps",
             )
         )
         assert "failed" in result.lower()
@@ -408,11 +400,7 @@ class TestRTRCheckCommandStatus:
                 ]
             },
         }
-        result = asyncio.run(
-            rtr_module.rtr_check_command_status(
-                cloud_request_id="req-42", session_id="sess-abc"
-            )
-        )
+        result = asyncio.run(rtr_module.rtr_check_command_status(cloud_request_id="req-42", session_id="sess-abc"))
         assert "notepad.exe" in result
         assert "complete" in result.lower()
 
@@ -421,43 +409,23 @@ class TestRTRCheckCommandStatus:
             "status_code": 200,
             "body": {"resources": [{"complete": False, "stdout": "", "stderr": ""}]},
         }
-        result = asyncio.run(
-            rtr_module.rtr_check_command_status(
-                cloud_request_id="req-42", session_id="sess-abc"
-            )
-        )
+        result = asyncio.run(rtr_module.rtr_check_command_status(cloud_request_id="req-42", session_id="sess-abc"))
         assert "pending" in result.lower() or "not complete" in result.lower()
 
     def test_surfaces_stderr_when_present(self, rtr_module):
         rtr_module.falcon.check_active_responder_command_status.return_value = {
             "status_code": 200,
-            "body": {
-                "resources": [
-                    {"complete": True, "stdout": "", "stderr": "Access denied"}
-                ]
-            },
+            "body": {"resources": [{"complete": True, "stdout": "", "stderr": "Access denied"}]},
         }
-        result = asyncio.run(
-            rtr_module.rtr_check_command_status(
-                cloud_request_id="req-42", session_id="sess-abc"
-            )
-        )
+        result = asyncio.run(rtr_module.rtr_check_command_status(cloud_request_id="req-42", session_id="sess-abc"))
         assert "Access denied" in result
 
     def test_requires_cloud_request_id(self, rtr_module):
-        result = asyncio.run(
-            rtr_module.rtr_check_command_status(
-                cloud_request_id="", session_id="sess-abc"
-            )
-        )
+        result = asyncio.run(rtr_module.rtr_check_command_status(cloud_request_id="", session_id="sess-abc"))
         assert "cloud_request_id" in result.lower()
 
     def test_requires_session_id(self, rtr_module):
-        result = asyncio.run(
-            rtr_module.rtr_check_command_status(
-                cloud_request_id="req-42", session_id=""
-            )
-        )
+        result = asyncio.run(rtr_module.rtr_check_command_status(cloud_request_id="req-42", session_id=""))
         assert "session_id" in result.lower()
 
     def test_passes_both_args(self, rtr_module):
@@ -465,11 +433,7 @@ class TestRTRCheckCommandStatus:
             "status_code": 200,
             "body": {"resources": [{"complete": True, "stdout": "ok"}]},
         }
-        asyncio.run(
-            rtr_module.rtr_check_command_status(
-                cloud_request_id="req-42", session_id="sess-abc"
-            )
-        )
+        asyncio.run(rtr_module.rtr_check_command_status(cloud_request_id="req-42", session_id="sess-abc"))
         kwargs = rtr_module.falcon.check_active_responder_command_status.call_args.kwargs
         assert kwargs["cloud_request_id"] == "req-42"
         assert kwargs["session_id"] == "sess-abc"
@@ -479,11 +443,7 @@ class TestRTRCheckCommandStatus:
             "status_code": 404,
             "body": {"errors": [{"message": "Not found"}]},
         }
-        result = asyncio.run(
-            rtr_module.rtr_check_command_status(
-                cloud_request_id="req-42", session_id="sess-abc"
-            )
-        )
+        result = asyncio.run(rtr_module.rtr_check_command_status(cloud_request_id="req-42", session_id="sess-abc"))
         assert "failed" in result.lower()
 
 
@@ -509,7 +469,8 @@ class TestRTRListFiles:
 
     def test_passes_session_id(self, rtr_module):
         rtr_module.falcon.list_files_v2.return_value = {
-            "status_code": 200, "body": {"resources": []},
+            "status_code": 200,
+            "body": {"resources": []},
         }
         asyncio.run(rtr_module.rtr_list_files(session_id="sess-abc"))
         rtr_module.falcon.list_files_v2.assert_called_once_with(session_id="sess-abc")
@@ -520,7 +481,8 @@ class TestRTRListFiles:
 
     def test_handles_empty_results(self, rtr_module):
         rtr_module.falcon.list_files_v2.return_value = {
-            "status_code": 200, "body": {"resources": []},
+            "status_code": 200,
+            "body": {"resources": []},
         }
         result = asyncio.run(rtr_module.rtr_list_files(session_id="sess-abc"))
         assert "no files" in result.lower() or "0" in result
@@ -538,11 +500,7 @@ class TestRTRGetExtractedFileContents:
     def test_saves_bytes_and_returns_path(self, rtr_module):
         # On success, falconpy returns raw bytes (7z archive), not a dict
         rtr_module.falcon.get_extracted_file_contents.return_value = b"\x37\x7a\xbc\xafFAKE_7Z"
-        result = asyncio.run(
-            rtr_module.rtr_get_extracted_file_contents(
-                session_id="sess-abc", sha256="abc123"
-            )
-        )
+        result = asyncio.run(rtr_module.rtr_get_extracted_file_contents(session_id="sess-abc", sha256="abc123"))
         expected_path = os.path.join(rtr_module._download_dir, "abc123.7z")
         assert expected_path in result
         assert os.path.exists(expected_path)
@@ -551,26 +509,18 @@ class TestRTRGetExtractedFileContents:
 
     def test_passes_session_id_sha256_and_filename(self, rtr_module):
         rtr_module.falcon.get_extracted_file_contents.return_value = b"BYTES"
-        asyncio.run(
-            rtr_module.rtr_get_extracted_file_contents(
-                session_id="sess-abc", sha256="abc", filename="evidence.exe"
-            )
-        )
+        asyncio.run(rtr_module.rtr_get_extracted_file_contents(session_id="sess-abc", sha256="abc", filename="evidence.exe"))
         kwargs = rtr_module.falcon.get_extracted_file_contents.call_args.kwargs
         assert kwargs["session_id"] == "sess-abc"
         assert kwargs["sha256"] == "abc"
         assert kwargs["filename"] == "evidence.exe"
 
     def test_requires_session_id(self, rtr_module):
-        result = asyncio.run(
-            rtr_module.rtr_get_extracted_file_contents(session_id="", sha256="abc")
-        )
+        result = asyncio.run(rtr_module.rtr_get_extracted_file_contents(session_id="", sha256="abc"))
         assert "session_id" in result.lower()
 
     def test_requires_sha256(self, rtr_module):
-        result = asyncio.run(
-            rtr_module.rtr_get_extracted_file_contents(session_id="s", sha256="")
-        )
+        result = asyncio.run(rtr_module.rtr_get_extracted_file_contents(session_id="s", sha256=""))
         assert "sha256" in result.lower()
 
     def test_handles_failure_dict(self, rtr_module):
@@ -578,20 +528,12 @@ class TestRTRGetExtractedFileContents:
             "status_code": 404,
             "body": {"errors": [{"message": "Not found"}]},
         }
-        result = asyncio.run(
-            rtr_module.rtr_get_extracted_file_contents(
-                session_id="sess-abc", sha256="abc"
-            )
-        )
+        result = asyncio.run(rtr_module.rtr_get_extracted_file_contents(session_id="sess-abc", sha256="abc"))
         assert "failed" in result.lower()
 
     def test_mentions_password_reminder(self, rtr_module):
         rtr_module.falcon.get_extracted_file_contents.return_value = b"7z-bytes"
-        result = asyncio.run(
-            rtr_module.rtr_get_extracted_file_contents(
-                session_id="sess-abc", sha256="abc"
-            )
-        )
+        result = asyncio.run(rtr_module.rtr_get_extracted_file_contents(session_id="sess-abc", sha256="abc"))
         # Users must know the archive password to extract
         assert "infected" in result.lower()
 
