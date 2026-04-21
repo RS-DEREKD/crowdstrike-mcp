@@ -970,6 +970,10 @@ Append this method to `CloudSecurityModule` just after `cloud_compliance_by_acco
         if not result.get("success"):
             return format_text_response(result.get("error", "Unknown error"), raw=True)
 
+        # Empty timeline (200 + empty resources) — surface the "no timeline" message.
+        if not result["risks"] and not result["changes"] and result.get("message"):
+            return format_text_response(result["message"], raw=True)
+
         if full:
             return format_text_response(json.dumps(result, default=str, indent=2), raw=True)
 
