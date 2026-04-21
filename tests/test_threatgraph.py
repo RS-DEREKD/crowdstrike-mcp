@@ -375,3 +375,41 @@ class TestThreatGraphGetRanOn:
             threatgraph_module.threatgraph_get_ran_on(value="", type="domain")
         )
         assert "value" in result.lower() or "required" in result.lower()
+
+
+class TestThreatGraphGetSummary:
+    def test_returns_summary(self, threatgraph_module):
+        threatgraph_module.falcon.get_summary.return_value = {
+            "status_code": 200,
+            "body": {"resources": [
+                {"id": "pid:aaa:111", "summary": "rclone.exe -> cloudflare.com"}
+            ]},
+        }
+        result = asyncio.run(
+            threatgraph_module.threatgraph_get_summary(
+                ids=["pid:aaa:111"], vertex_type="process"
+            )
+        )
+        assert "pid:aaa:111" in result
+        assert "rclone.exe" in result
+
+    def test_passes_args_to_falconpy(self, threatgraph_module):
+        threatgraph_module.falcon.get_summary.return_value = {
+            "status_code": 200, "body": {"resources": []},
+        }
+        asyncio.run(
+            threatgraph_module.threatgraph_get_summary(
+                ids=["x"], vertex_type="process", scope="customer", nano=True,
+            )
+        )
+        kwargs = threatgraph_module.falcon.get_summary.call_args.kwargs
+        assert kwargs["ids"] == ["x"]
+        assert kwargs["vertex_type"] == "process"
+        assert kwargs["scope"] == "customer"
+        assert kwargs["nano"] is True
+
+    def test_requires_ids(self, threatgraph_module):
+        result = asyncio.run(
+            threatgraph_module.threatgraph_get_summary(ids=[], vertex_type="process")
+        )
+        assert "ids" in result.lower() or "required" in result.lower()

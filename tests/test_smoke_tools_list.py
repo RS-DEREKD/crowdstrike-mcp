@@ -89,6 +89,7 @@ EXPECTED_READ_TOOLS = {
     "threatgraph_get_vertices",
     "threatgraph_get_edges",
     "threatgraph_get_ran_on",
+    "threatgraph_get_summary",
 }
 
 EXPECTED_WRITE_TOOLS = {

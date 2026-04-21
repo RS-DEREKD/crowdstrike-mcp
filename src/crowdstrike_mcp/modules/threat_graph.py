@@ -118,6 +118,16 @@ class ThreatGraphModule(BaseModule):
                 "Defaults: limit=100, scope='device'; cap limit<=1000."
             ),
         )
+        self._add_tool(
+            server,
+            self.threatgraph_get_summary,
+            name="threatgraph_get_summary",
+            description=(
+                "Short triage-ready summary for one or more vertex IDs. Use "
+                "after threatgraph_get_vertices to get a one-line-per-vertex "
+                "overview rather than full properties."
+            ),
+        )
 
     async def threatgraph_get_edge_types(self) -> str:
         """Refresh the edge-type cache and return the current list."""
@@ -263,6 +273,34 @@ class ThreatGraphModule(BaseModule):
             )
         except Exception as e:
             return format_text_response(f"Failed to get ran_on: {e}", raw=True)
+
+    async def threatgraph_get_summary(
+        self,
+        ids: Annotated[list[str], "Composite vertex IDs"],
+        vertex_type: Annotated[str, "Vertex type (process, file, etc.)"],
+        scope: Annotated[Literal["device", "customer", "global", "cspm", "cwpp"], "Query scope"] = "device",
+        nano: Annotated[bool, "Return nano-precision timestamps"] = False,
+    ) -> str:
+        """Fetch triage-ready vertex summaries."""
+        if not ids:
+            return format_text_response("Failed: ids is required", raw=True)
+        try:
+            falcon = self._service(ThreatGraph)
+            response = falcon.get_summary(
+                ids=ids, vertex_type=vertex_type, scope=scope, nano=nano,
+            )
+            if response.get("status_code") != 200:
+                err = format_api_error(
+                    response,
+                    "Failed to get summary",
+                    operation="combined_summary_get",
+                )
+                return format_text_response(f"Failed to get summary: {err}", raw=True)
+            return format_text_response(
+                _render_resources("Threat Graph Summary", response), raw=True
+            )
+        except Exception as e:
+            return format_text_response(f"Failed to get summary: {e}", raw=True)
 
     # -------- internal helpers --------
 
