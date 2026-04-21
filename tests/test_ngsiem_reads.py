@@ -1,6 +1,5 @@
 """Tests for FR 07 NGSIEM read-expansion tools."""
 
-import asyncio
 from unittest.mock import MagicMock, patch
 
 import pytest
