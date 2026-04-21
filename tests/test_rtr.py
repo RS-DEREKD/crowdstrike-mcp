@@ -104,3 +104,51 @@ class TestRTRAllowlist:
         err = rtr_module._validate_command("ls", "ps aux")
         assert err is not None
         assert "start with" in err.lower()
+
+
+class TestRTRInitSession:
+    def test_returns_session_id(self, rtr_module):
+        rtr_module.falcon.init_session.return_value = {
+            "status_code": 201,
+            "body": {
+                "resources": [
+                    {"session_id": "sess-abc", "device_id": "dev-123", "pwd": "/"}
+                ]
+            },
+        }
+        result = asyncio.run(rtr_module.rtr_init_session(device_id="dev-123"))
+        assert "sess-abc" in result
+        assert "dev-123" in result
+
+    def test_passes_device_id_and_queue_offline(self, rtr_module):
+        rtr_module.falcon.init_session.return_value = {
+            "status_code": 201,
+            "body": {"resources": [{"session_id": "s", "device_id": "dev-123"}]},
+        }
+        asyncio.run(
+            rtr_module.rtr_init_session(device_id="dev-123", queue_offline=True)
+        )
+        rtr_module.falcon.init_session.assert_called_once_with(
+            device_id="dev-123", queue_offline=True
+        )
+
+    def test_default_queue_offline_false(self, rtr_module):
+        rtr_module.falcon.init_session.return_value = {
+            "status_code": 201,
+            "body": {"resources": [{"session_id": "s", "device_id": "dev-123"}]},
+        }
+        asyncio.run(rtr_module.rtr_init_session(device_id="dev-123"))
+        kwargs = rtr_module.falcon.init_session.call_args.kwargs
+        assert kwargs["queue_offline"] is False
+
+    def test_requires_device_id(self, rtr_module):
+        result = asyncio.run(rtr_module.rtr_init_session(device_id=""))
+        assert "device_id" in result.lower()
+
+    def test_handles_api_error(self, rtr_module):
+        rtr_module.falcon.init_session.return_value = {
+            "status_code": 403,
+            "body": {"errors": [{"message": "Forbidden"}]},
+        }
+        result = asyncio.run(rtr_module.rtr_init_session(device_id="dev-123"))
+        assert "failed" in result.lower()

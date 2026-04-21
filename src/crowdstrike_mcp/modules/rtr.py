@@ -25,9 +25,11 @@ from __future__ import annotations
 import json
 import os
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Annotated, Optional
 
+from crowdstrike_mcp.common.errors import format_api_error
 from crowdstrike_mcp.modules.base import BaseModule
+from crowdstrike_mcp.utils import format_text_response
 
 if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
@@ -107,8 +109,74 @@ class RTRModule(BaseModule):
         self.resources.append("falcon://rtr/commands")
 
     def register_tools(self, server: FastMCP) -> None:
-        # Tool registrations added in subsequent tasks.
-        pass
+        self._add_tool(
+            server,
+            self.rtr_init_session,
+            name="rtr_init_session",
+            description=(
+                "Open an RTR session on a host so you can run allowlisted "
+                "evidence-collection commands against it. Returns a session_id "
+                "needed by rtr_execute_command and friends. Sessions auto-expire "
+                "after 10 minutes idle."
+            ),
+        )
+
+    # ------------------------------------------------------------------
+    # Tools
+    # ------------------------------------------------------------------
+
+    async def rtr_init_session(
+        self,
+        device_id: Annotated[str, "Falcon device/agent ID to open a session on (from host_lookup)"],
+        queue_offline: Annotated[
+            bool, "If the host is offline, queue the session and run on next check-in"
+        ] = False,
+    ) -> str:
+        """Open an RTR session against a host so commands can be run on it."""
+        result = self._init_session(device_id=device_id, queue_offline=queue_offline)
+        if not result.get("success"):
+            return format_text_response(
+                f"Failed to init RTR session: {result.get('error')}", raw=True
+            )
+        s = result["session"]
+        lines = [
+            f"RTR session opened on {s.get('device_id', device_id)}",
+            f"  session_id: {s.get('session_id', '?')}",
+        ]
+        if s.get("pwd"):
+            lines.append(f"  pwd: {s['pwd']}")
+        if s.get("created_at"):
+            lines.append(f"  created_at: {s['created_at']}")
+        lines.append("")
+        lines.append(
+            "Session auto-expires after 10 minutes idle. Use rtr_pulse_session "
+            "to keep it alive; use rtr_execute_command to run allowlisted commands."
+        )
+        return format_text_response("\n".join(lines), raw=True)
+
+    # ------------------------------------------------------------------
+    # Internal helpers (one per tool)
+    # ------------------------------------------------------------------
+
+    def _init_session(self, device_id: str, queue_offline: bool):
+        if not device_id:
+            return {"success": False, "error": "device_id is required"}
+        try:
+            svc = self._service(RealTimeResponse)
+            r = svc.init_session(device_id=device_id, queue_offline=queue_offline)
+            status = r.get("status_code", 0)
+            if not (200 <= status < 300):
+                return {
+                    "success": False,
+                    "error": format_api_error(
+                        r, "Failed to init RTR session", operation="RTR_InitSession"
+                    ),
+                }
+            resources = r.get("body", {}).get("resources", [])
+            session = resources[0] if resources else {}
+            return {"success": True, "session": session}
+        except Exception as e:
+            return {"success": False, "error": f"Error initializing RTR session: {e}"}
 
     # ------------------------------------------------------------------
     # Allowlist + audit helpers
