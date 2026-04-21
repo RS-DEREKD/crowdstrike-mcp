@@ -61,6 +61,18 @@ class NGSIEMModule(BaseModule):
             name="ngsiem_get_saved_query_template",
             description="Fetch the live body + metadata of one saved NGSIEM query.",
         )
+        self._add_tool(
+            server,
+            self.ngsiem_list_lookup_files,
+            name="ngsiem_list_lookup_files",
+            description="Enumerate NGSIEM lookup files (compact projection by default).",
+        )
+        self._add_tool(
+            server,
+            self.ngsiem_get_lookup_file,
+            name="ngsiem_get_lookup_file",
+            description="Fetch a lookup file; metadata only unless include_content=True.",
+        )
 
     async def ngsiem_query(
         self,
@@ -456,5 +468,51 @@ class NGSIEMModule(BaseModule):
             result,
             tool_name="ngsiem_get_saved_query_template",
             label="Saved Query Template",
+            identifier=id,
+        )
+
+    async def ngsiem_list_lookup_files(
+        self,
+        filter: Annotated[Optional[str], "FQL filter (optional)"] = None,
+        limit: Annotated[int, "Max records (default 100, cap 1000)"] = 100,
+        detail: Annotated[bool, "Return full records instead of compact projection"] = False,
+    ) -> str:
+        """Enumerate NGSIEM lookup files."""
+        limit = min(max(limit, 1), 1000)
+        falcon = self._service(NGSIEM)
+        kwargs: dict = {"limit": limit}
+        if filter:
+            kwargs["filter"] = filter
+        result = self._call_and_unwrap(falcon.list_lookup_files, "list_lookup_files", **kwargs)
+        return self._format_list(
+            result,
+            tool_name="ngsiem_list_lookup_files",
+            label="Lookup Files",
+            filter_=filter,
+            limit=limit,
+            detail=detail,
+        )
+
+    async def ngsiem_get_lookup_file(
+        self,
+        id: Annotated[str, "Lookup file ID"],
+        include_content: Annotated[bool, "Return file content, not just metadata"] = False,
+    ) -> str:
+        """Fetch a lookup file — metadata only unless include_content=True."""
+        falcon = self._service(NGSIEM)
+        result = self._call_and_unwrap(falcon.get_lookup_file, "get_lookup_file", ids=id)
+        if result.get("success") and not include_content:
+            # Strip content from each record client-side; metadata fields retained.
+            stripped: list = []
+            for rec in result["resources"] or []:
+                if isinstance(rec, dict):
+                    stripped.append({k: v for k, v in rec.items() if k != "content"})
+                else:
+                    stripped.append(rec)
+            result["resources"] = stripped
+        return self._format_single(
+            result,
+            tool_name="ngsiem_get_lookup_file",
+            label="Lookup File",
             identifier=id,
         )

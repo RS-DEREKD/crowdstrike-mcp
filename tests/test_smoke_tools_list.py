@@ -31,6 +31,8 @@ EXPECTED_READ_TOOLS = {
     "ngsiem_query",
     "ngsiem_list_saved_queries",
     "ngsiem_get_saved_query_template",
+    "ngsiem_list_lookup_files",
+    "ngsiem_get_lookup_file",
     "host_lookup",
     "host_login_history",
     "host_network_history",

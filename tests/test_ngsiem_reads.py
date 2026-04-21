@@ -144,3 +144,81 @@ class TestGetSavedQueryTemplate:
         }
         result = asyncio.run(ngsiem_module.ngsiem_get_saved_query_template(id="missing"))
         assert "failed" in result.lower()
+
+
+class TestListLookupFiles:
+    def test_returns_compact_projection(self, ngsiem_module):
+        ngsiem_module.falcon.list_lookup_files.return_value = {
+            "status_code": 200,
+            "body": {"resources": [
+                {"id": "l1", "name": "blocked_domains.csv", "last_modified": "t1",
+                 "row_count": 400, "schema": "..." * 20},
+            ]},
+        }
+        result = asyncio.run(ngsiem_module.ngsiem_list_lookup_files())
+        assert "l1" in result and "blocked_domains.csv" in result
+        assert "row_count" not in result  # not in compact field set
+
+    def test_detail_true_returns_full(self, ngsiem_module):
+        ngsiem_module.falcon.list_lookup_files.return_value = {
+            "status_code": 200,
+            "body": {"resources": [
+                {"id": "l1", "name": "x", "row_count": 42},
+            ]},
+        }
+        result = asyncio.run(ngsiem_module.ngsiem_list_lookup_files(detail=True))
+        assert "row_count" in result
+        assert "42" in result
+
+    def test_caps_limit(self, ngsiem_module):
+        ngsiem_module.falcon.list_lookup_files.return_value = {
+            "status_code": 200, "body": {"resources": []},
+        }
+        asyncio.run(ngsiem_module.ngsiem_list_lookup_files(limit=9999))
+        assert ngsiem_module.falcon.list_lookup_files.call_args.kwargs["limit"] == 1000
+
+
+class TestGetLookupFile:
+    FULL_RECORD = {
+        "id": "l1",
+        "name": "blocked_domains.csv",
+        "row_count": 385,
+        "schema": [{"name": "domain", "type": "string"}],
+        "content": "domain\nfoo.example\nbar.example\n",
+        "last_modified": "2026-04-10T00:00:00Z",
+    }
+
+    def test_metadata_only_by_default(self, ngsiem_module):
+        ngsiem_module.falcon.get_lookup_file.return_value = {
+            "status_code": 200, "body": {"resources": [self.FULL_RECORD]},
+        }
+        result = asyncio.run(ngsiem_module.ngsiem_get_lookup_file(id="l1"))
+        assert "blocked_domains.csv" in result
+        assert "385" in result
+        assert "foo.example" not in result  # content stripped
+        assert "bar.example" not in result
+
+    def test_include_content_true_returns_content(self, ngsiem_module):
+        ngsiem_module.falcon.get_lookup_file.return_value = {
+            "status_code": 200, "body": {"resources": [self.FULL_RECORD]},
+        }
+        result = asyncio.run(
+            ngsiem_module.ngsiem_get_lookup_file(id="l1", include_content=True)
+        )
+        assert "foo.example" in result
+        assert "bar.example" in result
+
+    def test_passes_id(self, ngsiem_module):
+        ngsiem_module.falcon.get_lookup_file.return_value = {
+            "status_code": 200, "body": {"resources": []},
+        }
+        asyncio.run(ngsiem_module.ngsiem_get_lookup_file(id="abc"))
+        kwargs = ngsiem_module.falcon.get_lookup_file.call_args.kwargs
+        assert kwargs["ids"] == "abc" or kwargs["ids"] == ["abc"]
+
+    def test_handles_api_error(self, ngsiem_module):
+        ngsiem_module.falcon.get_lookup_file.return_value = {
+            "status_code": 404, "body": {"errors": [{"message": "Not found"}]},
+        }
+        result = asyncio.run(ngsiem_module.ngsiem_get_lookup_file(id="missing"))
+        assert "failed" in result.lower()
