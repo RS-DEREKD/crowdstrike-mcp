@@ -330,3 +330,74 @@ class TestSpotlightGetRemediations:
         }
         result = asyncio.run(spotlight_vuln_module.spotlight_get_remediations(ids=["x"]))
         assert "failed" in result.lower()
+
+
+class TestSpotlightHostVulns:
+    def test_builds_aid_filter_with_open_status(self, spotlight_vuln_module):
+        spotlight_vuln_module.falcon_vulns.query_vulnerabilities_combined.return_value = {
+            "status_code": 200, "body": {"resources": []},
+        }
+        asyncio.run(spotlight_vuln_module.spotlight_host_vulns(device_id="abc123"))
+        kwargs = spotlight_vuln_module.falcon_vulns.query_vulnerabilities_combined.call_args.kwargs
+        assert "aid:'abc123'" in kwargs["filter"]
+        assert "status:'open'" in kwargs["filter"]
+
+    def test_allows_override_status(self, spotlight_vuln_module):
+        spotlight_vuln_module.falcon_vulns.query_vulnerabilities_combined.return_value = {
+            "status_code": 200, "body": {"resources": []},
+        }
+        asyncio.run(
+            spotlight_vuln_module.spotlight_host_vulns(
+                device_id="abc123", include_closed=True
+            )
+        )
+        kwargs = spotlight_vuln_module.falcon_vulns.query_vulnerabilities_combined.call_args.kwargs
+        assert "status:'open'" not in kwargs["filter"]
+        assert "aid:'abc123'" in kwargs["filter"]
+
+    def test_requires_device_id(self, spotlight_vuln_module):
+        result = asyncio.run(spotlight_vuln_module.spotlight_host_vulns(device_id=""))
+        assert "device_id" in result.lower() or "required" in result.lower()
+
+    def test_applies_severity_floor(self, spotlight_vuln_module):
+        spotlight_vuln_module.falcon_vulns.query_vulnerabilities_combined.return_value = {
+            "status_code": 200, "body": {"resources": []},
+        }
+        asyncio.run(
+            spotlight_vuln_module.spotlight_host_vulns(
+                device_id="abc123", min_severity="HIGH"
+            )
+        )
+        kwargs = spotlight_vuln_module.falcon_vulns.query_vulnerabilities_combined.call_args.kwargs
+        assert "cve.severity" in kwargs["filter"]
+        # severity floor must include HIGH *and* everything above it
+        assert "HIGH" in kwargs["filter"]
+        assert "CRITICAL" in kwargs["filter"]
+
+    def test_cve_id_param_adds_filter(self, spotlight_vuln_module):
+        spotlight_vuln_module.falcon_vulns.query_vulnerabilities_combined.return_value = {
+            "status_code": 200, "body": {"resources": []},
+        }
+        asyncio.run(
+            spotlight_vuln_module.spotlight_host_vulns(
+                device_id="abc123", cve_id="CVE-2024-1234"
+            )
+        )
+        kwargs = spotlight_vuln_module.falcon_vulns.query_vulnerabilities_combined.call_args.kwargs
+        assert "aid:'abc123'" in kwargs["filter"]
+        assert "cve.id:'CVE-2024-1234'" in kwargs["filter"]
+
+    def test_returns_formatted_list(self, spotlight_vuln_module):
+        spotlight_vuln_module.falcon_vulns.query_vulnerabilities_combined.return_value = {
+            "status_code": 200,
+            "body": {"resources": [
+                {
+                    "id": "v-1",
+                    "cve": {"id": "CVE-2024-1", "severity": "CRITICAL", "base_score": 9.8},
+                    "host_info": {"hostname": "web-01", "platform_name": "Linux"},
+                    "status": "open",
+                }
+            ]},
+        }
+        result = asyncio.run(spotlight_vuln_module.spotlight_host_vulns(device_id="abc123"))
+        assert "CVE-2024-1" in result

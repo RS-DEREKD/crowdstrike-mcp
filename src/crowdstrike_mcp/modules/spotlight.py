@@ -96,6 +96,17 @@ class SpotlightModule(BaseModule):
                 "spotlight_vulnerabilities_combined."
             ),
         )
+        self._add_tool(
+            server,
+            self.spotlight_host_vulns,
+            name="spotlight_host_vulns",
+            description=(
+                "Triage shortcut: list open vulnerabilities on a specific host by "
+                "device_id (aid). Pre-filters status:'open' unless include_closed=True. "
+                "Optional min_severity floor. Use this for 'is this host vulnerable?' "
+                "during live alert triage."
+            ),
+        )
 
     async def spotlight_supported_evaluations(
         self,
@@ -228,6 +239,36 @@ class SpotlightModule(BaseModule):
                     lines.append(f"   Reference: {rem['reference']}")
                 lines.append("")
         return format_text_response("\n".join(lines), raw=True)
+
+    async def spotlight_host_vulns(
+        self,
+        device_id: Annotated[str, "Falcon device/agent ID (aid) to list vulns for"],
+        cve_id: Annotated[Optional[str], "Filter to a single CVE (e.g. 'CVE-2024-1234'). Use for 'is this host affected by X?' triage."] = None,
+        include_closed: Annotated[bool, "If True, include closed/remediated vulns (default False)"] = False,
+        min_severity: Annotated[Optional[str], "Minimum severity: CRITICAL | HIGH | MEDIUM | LOW"] = None,
+        limit: Annotated[int, "Max results (default 50, max 500)"] = 50,
+    ) -> str:
+        """Triage shortcut: all (open) vulnerabilities for a single host."""
+        if not device_id:
+            return format_text_response("Failed: device_id is required", raw=True)
+
+        filter_parts = [f"aid:'{device_id}'"]
+        if cve_id:
+            filter_parts.append(f"cve.id:'{cve_id}'")
+        if not include_closed:
+            filter_parts.append("status:'open'")
+        if min_severity:
+            severity_order = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+            if min_severity.upper() in severity_order:
+                idx = severity_order.index(min_severity.upper())
+                allowed = severity_order[idx:]
+                filter_parts.append(f"cve.severity:[{','.join(repr(s) for s in allowed)}]")
+
+        filter_str = "+".join(filter_parts)
+        result = self._vulnerabilities_combined(filter=filter_str, limit=limit)
+        if not result.get("success"):
+            return format_text_response(f"Failed to get host vulnerabilities: {result.get('error')}", raw=True)
+        return self._format_vuln_list(result, header=f"Vulnerabilities on host {device_id}")
 
     def _query_vulnerabilities(self, filter, limit=50, after=None, sort=None):
         if not SPOTLIGHT_VULNS_AVAILABLE:
