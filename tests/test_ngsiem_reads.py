@@ -222,3 +222,76 @@ class TestGetLookupFile:
         }
         result = asyncio.run(ngsiem_module.ngsiem_get_lookup_file(id="missing"))
         assert "failed" in result.lower()
+
+
+class TestListDashboards:
+    def test_compact_projection(self, ngsiem_module):
+        ngsiem_module.falcon.list_dashboards.return_value = {
+            "status_code": 200,
+            "body": {"resources": [
+                {"id": "d1", "name": "Ingestion Overview", "last_modified": "t1",
+                 "widgets": ["..." * 50]},
+            ]},
+        }
+        result = asyncio.run(ngsiem_module.ngsiem_list_dashboards())
+        assert "Ingestion Overview" in result
+        assert "widgets" not in result
+
+    def test_handles_api_error(self, ngsiem_module):
+        ngsiem_module.falcon.list_dashboards.return_value = {
+            "status_code": 500, "body": {"errors": [{"message": "boom"}]},
+        }
+        result = asyncio.run(ngsiem_module.ngsiem_list_dashboards())
+        assert "failed" in result.lower()
+
+
+class TestListParsers:
+    def test_compact_projection(self, ngsiem_module):
+        ngsiem_module.falcon.list_parsers.return_value = {
+            "status_code": 200,
+            "body": {"resources": [
+                {"id": "p1", "name": "box-parser", "last_modified": "t",
+                 "script": "#" * 1000},
+            ]},
+        }
+        result = asyncio.run(ngsiem_module.ngsiem_list_parsers())
+        assert "box-parser" in result
+        assert "script" not in result
+
+    def test_detail_true_returns_script(self, ngsiem_module):
+        ngsiem_module.falcon.list_parsers.return_value = {
+            "status_code": 200,
+            "body": {"resources": [
+                {"id": "p1", "name": "box-parser", "script": "MARKER_STRING"},
+            ]},
+        }
+        result = asyncio.run(ngsiem_module.ngsiem_list_parsers(detail=True))
+        assert "MARKER_STRING" in result
+
+
+class TestGetParser:
+    def test_returns_parser_detail(self, ngsiem_module):
+        ngsiem_module.falcon.get_parser.return_value = {
+            "status_code": 200,
+            "body": {"resources": [
+                {"id": "p1", "name": "box-parser", "script": "MARKER_STRING"},
+            ]},
+        }
+        result = asyncio.run(ngsiem_module.ngsiem_get_parser(id="p1"))
+        assert "p1" in result
+        assert "MARKER_STRING" in result
+
+    def test_passes_id(self, ngsiem_module):
+        ngsiem_module.falcon.get_parser.return_value = {
+            "status_code": 200, "body": {"resources": []},
+        }
+        asyncio.run(ngsiem_module.ngsiem_get_parser(id="p1"))
+        kwargs = ngsiem_module.falcon.get_parser.call_args.kwargs
+        assert kwargs["ids"] == "p1" or kwargs["ids"] == ["p1"]
+
+    def test_handles_api_error(self, ngsiem_module):
+        ngsiem_module.falcon.get_parser.return_value = {
+            "status_code": 404, "body": {"errors": [{"message": "Not found"}]},
+        }
+        result = asyncio.run(ngsiem_module.ngsiem_get_parser(id="missing"))
+        assert "failed" in result.lower()

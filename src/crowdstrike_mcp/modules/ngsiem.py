@@ -73,6 +73,24 @@ class NGSIEMModule(BaseModule):
             name="ngsiem_get_lookup_file",
             description="Fetch a lookup file; metadata only unless include_content=True.",
         )
+        self._add_tool(
+            server,
+            self.ngsiem_list_dashboards,
+            name="ngsiem_list_dashboards",
+            description="Enumerate NGSIEM dashboards (compact projection by default).",
+        )
+        self._add_tool(
+            server,
+            self.ngsiem_list_parsers,
+            name="ngsiem_list_parsers",
+            description="Enumerate NGSIEM parsers (compact projection by default).",
+        )
+        self._add_tool(
+            server,
+            self.ngsiem_get_parser,
+            name="ngsiem_get_parser",
+            description="Fetch a parser's live configuration + script.",
+        )
 
     async def ngsiem_query(
         self,
@@ -514,5 +532,63 @@ class NGSIEMModule(BaseModule):
             result,
             tool_name="ngsiem_get_lookup_file",
             label="Lookup File",
+            identifier=id,
+        )
+
+    async def ngsiem_list_dashboards(
+        self,
+        filter: Annotated[Optional[str], "FQL filter (optional)"] = None,
+        limit: Annotated[int, "Max records (default 100, cap 1000)"] = 100,
+        detail: Annotated[bool, "Return full records instead of compact projection"] = False,
+    ) -> str:
+        """Enumerate NGSIEM dashboards."""
+        limit = min(max(limit, 1), 1000)
+        falcon = self._service(NGSIEM)
+        kwargs: dict = {"limit": limit}
+        if filter:
+            kwargs["filter"] = filter
+        result = self._call_and_unwrap(falcon.list_dashboards, "list_dashboards", **kwargs)
+        return self._format_list(
+            result,
+            tool_name="ngsiem_list_dashboards",
+            label="Dashboards",
+            filter_=filter,
+            limit=limit,
+            detail=detail,
+        )
+
+    async def ngsiem_list_parsers(
+        self,
+        filter: Annotated[Optional[str], "FQL filter (optional)"] = None,
+        limit: Annotated[int, "Max records (default 100, cap 1000)"] = 100,
+        detail: Annotated[bool, "Return full records instead of compact projection"] = False,
+    ) -> str:
+        """Enumerate NGSIEM parsers."""
+        limit = min(max(limit, 1), 1000)
+        falcon = self._service(NGSIEM)
+        kwargs: dict = {"limit": limit}
+        if filter:
+            kwargs["filter"] = filter
+        result = self._call_and_unwrap(falcon.list_parsers, "list_parsers", **kwargs)
+        return self._format_list(
+            result,
+            tool_name="ngsiem_list_parsers",
+            label="Parsers",
+            filter_=filter,
+            limit=limit,
+            detail=detail,
+        )
+
+    async def ngsiem_get_parser(
+        self,
+        id: Annotated[str, "Parser ID"],
+    ) -> str:
+        """Fetch a parser's live configuration + script."""
+        falcon = self._service(NGSIEM)
+        result = self._call_and_unwrap(falcon.get_parser, "get_parser", ids=id)
+        return self._format_single(
+            result,
+            tool_name="ngsiem_get_parser",
+            label="Parser",
             identifier=id,
         )
