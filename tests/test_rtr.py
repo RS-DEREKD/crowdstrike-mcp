@@ -152,3 +152,43 @@ class TestRTRInitSession:
         }
         result = asyncio.run(rtr_module.rtr_init_session(device_id="dev-123"))
         assert "failed" in result.lower()
+
+
+class TestRTRListSessions:
+    def test_returns_session_metadata(self, rtr_module):
+        rtr_module.falcon.list_sessions.return_value = {
+            "status_code": 200,
+            "body": {
+                "resources": [
+                    {
+                        "id": "sess-1",
+                        "device_id": "dev-1",
+                        "created_at": "2026-04-20T00:00:00Z",
+                        "updated_at": "2026-04-20T00:01:00Z",
+                        "pwd": "C:\\Users",
+                    }
+                ]
+            },
+        }
+        result = asyncio.run(rtr_module.rtr_list_sessions(ids=["sess-1"]))
+        assert "sess-1" in result
+        assert "dev-1" in result
+
+    def test_passes_ids_to_falconpy(self, rtr_module):
+        rtr_module.falcon.list_sessions.return_value = {
+            "status_code": 200, "body": {"resources": []},
+        }
+        asyncio.run(rtr_module.rtr_list_sessions(ids=["a", "b", "c"]))
+        rtr_module.falcon.list_sessions.assert_called_once_with(ids=["a", "b", "c"])
+
+    def test_requires_ids(self, rtr_module):
+        result = asyncio.run(rtr_module.rtr_list_sessions(ids=[]))
+        assert "ids" in result.lower()
+
+    def test_handles_api_error(self, rtr_module):
+        rtr_module.falcon.list_sessions.return_value = {
+            "status_code": 500,
+            "body": {"errors": [{"message": "boom"}]},
+        }
+        result = asyncio.run(rtr_module.rtr_list_sessions(ids=["sess-1"]))
+        assert "failed" in result.lower()

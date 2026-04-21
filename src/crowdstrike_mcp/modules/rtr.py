@@ -120,6 +120,16 @@ class RTRModule(BaseModule):
                 "after 10 minutes idle."
             ),
         )
+        self._add_tool(
+            server,
+            self.rtr_list_sessions,
+            name="rtr_list_sessions",
+            description=(
+                "Look up metadata for RTR session IDs you've opened "
+                "(device_id, pwd, created/updated timestamps). Only returns "
+                "sessions owned by the calling user."
+            ),
+        )
 
     # ------------------------------------------------------------------
     # Tools
@@ -154,6 +164,34 @@ class RTRModule(BaseModule):
         )
         return format_text_response("\n".join(lines), raw=True)
 
+    async def rtr_list_sessions(
+        self,
+        ids: Annotated[list[str], "RTR session IDs to look up (returns only sessions owned by the calling user)"],
+    ) -> str:
+        """List metadata for one or more RTR session IDs."""
+        result = self._list_sessions(ids)
+        if not result.get("success"):
+            return format_text_response(
+                f"Failed to list RTR sessions: {result.get('error')}", raw=True
+            )
+        sessions = result["sessions"]
+        lines = [f"RTR Sessions: {len(sessions)} records", ""]
+        if not sessions:
+            lines.append("No sessions returned (ids may be unknown or owned by another user).")
+        else:
+            for i, s in enumerate(sessions, 1):
+                lines.append(
+                    f"{i}. {s.get('id', '?')} on {s.get('device_id', '?')}"
+                )
+                if s.get("pwd"):
+                    lines.append(f"   pwd: {s['pwd']}")
+                if s.get("created_at") or s.get("updated_at"):
+                    lines.append(
+                        f"   created: {s.get('created_at', '?')} | updated: {s.get('updated_at', '?')}"
+                    )
+                lines.append("")
+        return format_text_response("\n".join(lines), raw=True)
+
     # ------------------------------------------------------------------
     # Internal helpers (one per tool)
     # ------------------------------------------------------------------
@@ -177,6 +215,23 @@ class RTRModule(BaseModule):
             return {"success": True, "session": session}
         except Exception as e:
             return {"success": False, "error": f"Error initializing RTR session: {e}"}
+
+    def _list_sessions(self, ids):
+        if not ids:
+            return {"success": False, "error": "ids list is required"}
+        try:
+            svc = self._service(RealTimeResponse)
+            r = svc.list_sessions(ids=ids)
+            if r["status_code"] != 200:
+                return {
+                    "success": False,
+                    "error": format_api_error(
+                        r, "Failed to list RTR sessions", operation="RTR_ListSessions"
+                    ),
+                }
+            return {"success": True, "sessions": r.get("body", {}).get("resources", [])}
+        except Exception as e:
+            return {"success": False, "error": f"Error listing RTR sessions: {e}"}
 
     # ------------------------------------------------------------------
     # Allowlist + audit helpers
