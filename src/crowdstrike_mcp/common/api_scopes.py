@@ -83,6 +83,14 @@ OPERATION_SCOPES = {
     "get_guides": ["cao-hunting:read"],
     "aggregate_guides": ["cao-hunting:read"],
     "create_export_archive": ["cao-hunting:read"],
+    # Real-Time Response (read-only subset — FR03)
+    "RTR_InitSession": ["real-time-response:write"],
+    "RTR_ListSessions": ["real-time-response:read"],
+    "RTR_PulseSession": ["real-time-response:write"],
+    "RTR_ExecuteActiveResponderCommand": ["real-time-response:write"],
+    "RTR_CheckActiveResponderCommandStatus": ["real-time-response:read"],
+    "RTR_GetExtractedFileContents": ["real-time-response:read"],
+    "RTR_ListFilesV2": ["real-time-response:read"],
 }
 
 

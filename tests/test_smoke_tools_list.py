@@ -19,6 +19,7 @@ _FALCONPY_PATCHES = [
     "crowdstrike_mcp.modules.idp.IdentityProtection",
     "crowdstrike_mcp.modules.ngsiem.NGSIEM",
     "crowdstrike_mcp.modules.response.Hosts",
+    "crowdstrike_mcp.modules.rtr.RealTimeResponse",
     "crowdstrike_mcp.modules.spotlight.SpotlightEvaluationLogic",
 ]
 
@@ -62,6 +63,13 @@ EXPECTED_READ_TOOLS = {
     "spotlight_get_remediations",
     "spotlight_host_vulns",
     "identity_investigate_entity",
+    "rtr_init_session",
+    "rtr_list_sessions",
+    "rtr_pulse_session",
+    "rtr_execute_command",
+    "rtr_check_command_status",
+    "rtr_list_files",
+    "rtr_get_extracted_file_contents",
     "get_stored_response",
     "list_stored_responses",
 }
@@ -98,6 +106,7 @@ def _patch_falconpy():
         patch.multiple("crowdstrike_mcp.modules.idp", IdentityProtection=MagicMock()),
         patch.multiple("crowdstrike_mcp.modules.ngsiem", NGSIEM=MagicMock()),
         patch.multiple("crowdstrike_mcp.modules.response", Hosts=MagicMock()),
+        patch.multiple("crowdstrike_mcp.modules.rtr", RealTimeResponse=MagicMock()),
         patch.multiple("crowdstrike_mcp.modules.spotlight", SpotlightEvaluationLogic=MagicMock()),
     ):
         yield
