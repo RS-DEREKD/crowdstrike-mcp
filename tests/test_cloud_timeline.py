@@ -399,3 +399,31 @@ class TestMergedTimeline:
         assert row["event_type"] == "risk_current_state"
         assert row["timestamp"] == "2026-04-20T00:00:00Z"
         assert row["source_id"] == "ri-synth"
+        assert row.get("synthetic") is True
+
+    def test_max_results_applies_after_since_filter(self, cloud_module):
+        """max_results caps the POST-filter merged list, not the raw body."""
+        cloud_module.harness.command.return_value = {
+            "status_code": 200,
+            "body": SAMPLE_TIMELINE_BODY,
+        }
+        # since drops the 2 ri-200 events (March) and the cc-001 2026-04-10 event,
+        # leaving: ri-100 @ 2026-04-18 + cc-002 @ 2026-04-18 = 2 rows. max_results=1 caps to 1.
+        result = cloud_module._get_risk_timeline(
+            asset_id="crn:x",
+            since="2026-04-15T00:00:00Z",
+            max_results=1,
+        )
+        assert len(result["timeline"]) == 1
+
+    def test_max_results_zero_returns_empty_timeline(self, cloud_module):
+        """max_results=0 returns an empty timeline without errors."""
+        cloud_module.harness.command.return_value = {
+            "status_code": 200,
+            "body": SAMPLE_TIMELINE_BODY,
+        }
+        result = cloud_module._get_risk_timeline(asset_id="crn:x", max_results=0)
+        assert result["timeline"] == []
+        # But the underlying projection is still intact.
+        assert result["total_risks"] == 2
+        assert result["total_changes"] == 2

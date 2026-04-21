@@ -91,8 +91,12 @@ def _build_merged_timeline(risks: list[dict], changes: list[dict], max_results: 
     Each row carries at minimum: kind ('risk' or 'change'), timestamp, source_id, plus
     kind-specific context (event_type + rule_name + severity for risk rows; event_name
     + asset_revision + user_id + user_name for change rows). Rows are sorted descending
-    by timestamp and trimmed to ``max_results``. Risk instances with no events emit a
-    single synthetic row at ``last_seen`` tagged ``risk_current_state``.
+    by timestamp; on tied timestamps, risk rows precede change rows (a risk_reopened
+    event belongs above the config change that triggered it). Trimmed to ``max_results``.
+
+    Risk instances with no events emit a single synthetic row at ``last_seen`` tagged
+    event_type='risk_current_state' and carrying ``synthetic: True`` so downstream
+    renderers can distinguish them from real events.
     """
     rows: list[dict] = []
 
@@ -118,6 +122,7 @@ def _build_merged_timeline(risks: list[dict], changes: list[dict], max_results: 
                     "source_id": r["id"],
                     "rule_name": r["rule_name"],
                     "severity": r["severity"],
+                    "synthetic": True,
                 }
             )
 
@@ -135,7 +140,14 @@ def _build_merged_timeline(risks: list[dict], changes: list[dict], max_results: 
                 }
             )
 
-    rows.sort(key=lambda row: row["timestamp"], reverse=True)
+    # Secondary key: risks before changes on tied timestamps so a risk_reopened event
+    # renders above the config change that triggered it. Making it explicit converts
+    # what was stable-sort-incidental into a documented contract.
+    _kind_order = {"risk": 0, "change": 1}
+    rows.sort(
+        key=lambda row: (row["timestamp"], -_kind_order[row["kind"]]),
+        reverse=True,
+    )
     return rows[:max_results]
 
 
