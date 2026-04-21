@@ -364,10 +364,11 @@ class TestGetRiskTimelineProjection:
             "body": SAMPLE_TIMELINE_BODY,
         }
         cloud_module._get_risk_timeline(asset_id="crn:example")
-        # command() called exactly once with the operation id and id=<gcrn>
+        # command() called exactly once with override="GET,<path>" and parameters={"id": <gcrn>}
         assert cloud_module.harness.command.call_count == 1
-        args, kwargs = cloud_module.harness.command.call_args
-        assert kwargs.get("id") == "crn:example" or (len(args) > 1 and args[1] == "crn:example")
+        _, kwargs = cloud_module.harness.command.call_args
+        assert kwargs.get("override", "").startswith("GET,/cloud-security-timeline")
+        assert kwargs.get("parameters", {}).get("id") == "crn:example"
 ```
 
 - [ ] Add the test class above.
@@ -387,7 +388,10 @@ Append this method to the `CloudSecurityModule` class in `src/crowdstrike_mcp/mo
             return {"success": False, "error": "APIHarnessV2 client not available"}
         try:
             harness = self._service(APIHarnessV2)
-            r = harness.command(TIMELINE_OPERATION_ID, id=asset_id)
+            r = harness.command(
+                override=TIMELINE_OVERRIDE,
+                parameters={"id": asset_id},
+            )
 
             if r["status_code"] != 200:
                 err = format_api_error(
