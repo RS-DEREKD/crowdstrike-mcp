@@ -478,3 +478,245 @@ class TestRelationshipInvestigation:
         )
         assert result["relationships"][0]["associations"] == []
         assert result["relationships"][0]["relationship_count"] == 0
+
+
+class TestIdentityInvestigateEntityValidation:
+    def test_no_identifiers_errors(self, idp_module):
+        result = asyncio.run(
+            idp_module.identity_investigate_entity(investigation_types=["entity_details"])
+        )
+        assert "at least one" in result.lower() or "identifier" in result.lower()
+        idp_module.falcon.graphql.assert_not_called()
+
+    def test_invalid_investigation_type_errors(self, idp_module):
+        result = asyncio.run(
+            idp_module.identity_investigate_entity(
+                entity_ids=["e1"],
+                investigation_types=["not_a_real_type"],
+            )
+        )
+        assert "not_a_real_type" in result
+
+    def test_invalid_timeline_event_type_errors(self, idp_module):
+        result = asyncio.run(
+            idp_module.identity_investigate_entity(
+                entity_ids=["e1"],
+                investigation_types=["timeline_analysis"],
+                timeline_event_types=["NOT_A_CATEGORY"],
+            )
+        )
+        assert "NOT_A_CATEGORY" in result
+
+    def test_depth_out_of_range_errors(self, idp_module):
+        result = asyncio.run(
+            idp_module.identity_investigate_entity(
+                entity_ids=["e1"],
+                investigation_types=["relationship_analysis"],
+                relationship_depth=7,
+            )
+        )
+        assert "depth" in result.lower()
+
+    def test_limit_out_of_range_errors(self, idp_module):
+        result = asyncio.run(
+            idp_module.identity_investigate_entity(entity_ids=["e1"], limit=5000)
+        )
+        assert "limit" in result.lower()
+
+    def test_empty_investigation_types_errors(self, idp_module):
+        result = asyncio.run(
+            idp_module.identity_investigate_entity(
+                entity_ids=["e1"], investigation_types=[]
+            )
+        )
+        assert "investigation_types" in result
+        assert "empty" in result.lower() or "cannot" in result.lower()
+        idp_module.falcon.graphql.assert_not_called()
+
+
+class TestIdentityInvestigateEntityConvenienceParams:
+    def test_username_merges_into_entity_names(self, idp_module):
+        """`username="jdoe"` → resolution query contains primaryDisplayNames: ["jdoe"]."""
+        idp_module.falcon.graphql.return_value = {
+            "status_code": 200,
+            "body": {"data": {"entities": {"nodes": [{"entityId": "e1"}]}}},
+        }
+        # Only entity_details; set nodes response for the details query
+        def router(**kw):
+            q = kw["body"]["query"]
+            if "primaryDisplayNames: [\"jdoe\"]" in q:
+                return {
+                    "status_code": 200,
+                    "body": {"data": {"entities": {"nodes": [{"entityId": "e1"}]}}},
+                }
+            # details query for resolved id
+            return {
+                "status_code": 200,
+                "body": {"data": {"entities": {"nodes": [
+                    {"entityId": "e1", "primaryDisplayName": "jdoe", "type": "USER", "riskScore": 80}
+                ]}}},
+            }
+        idp_module.falcon.graphql.side_effect = router
+        result = asyncio.run(
+            idp_module.identity_investigate_entity(username="jdoe")
+        )
+        assert "jdoe" in result
+        # Verify the resolution call happened with the username in primaryDisplayNames
+        assert any(
+            'primaryDisplayNames: ["jdoe"]' in c.kwargs["body"]["query"]
+            for c in idp_module.falcon.graphql.call_args_list
+        )
+
+    def test_username_and_entity_names_combined(self, idp_module):
+        """`username=` is appended to `entity_names=`, not replacing it."""
+        calls_seen = []
+        def router(**kw):
+            calls_seen.append(kw["body"]["query"])
+            return {
+                "status_code": 200,
+                "body": {"data": {"entities": {"nodes": [{"entityId": "e1"}]}}},
+            }
+        idp_module.falcon.graphql.side_effect = router
+        asyncio.run(
+            idp_module.identity_investigate_entity(
+                username="jdoe",
+                entity_names=["Administrator"],
+                investigation_types=["entity_details"],
+            )
+        )
+        resolution_q = calls_seen[0]
+        assert '"Administrator"' in resolution_q
+        assert '"jdoe"' in resolution_q
+
+    def test_username_duplicate_not_doubled(self, idp_module):
+        """If `username` is already in `entity_names`, don't duplicate it."""
+        captured = []
+        def router(**kw):
+            captured.append(kw["body"]["query"])
+            return {
+                "status_code": 200,
+                "body": {"data": {"entities": {"nodes": [{"entityId": "e1"}]}}},
+            }
+        idp_module.falcon.graphql.side_effect = router
+        asyncio.run(
+            idp_module.identity_investigate_entity(
+                username="jdoe",
+                entity_names=["jdoe"],
+                investigation_types=["entity_details"],
+            )
+        )
+        # Should appear exactly once in the resolution query
+        assert captured[0].count('"jdoe"') == 1
+
+    def test_quick_triage_forces_lean_investigation(self, idp_module):
+        """`quick_triage=True` → investigation_types locked to [entity_details, risk_assessment],
+        and the includes are all False."""
+        queries = []
+        def router(**kw):
+            queries.append(kw["body"]["query"])
+            return {
+                "status_code": 200,
+                "body": {"data": {"entities": {"nodes": [
+                    {"entityId": "e1", "primaryDisplayName": "jdoe", "type": "USER",
+                     "riskScore": 90, "riskScoreSeverity": "HIGH"}
+                ]}}},
+            }
+        idp_module.falcon.graphql.side_effect = router
+        result = asyncio.run(
+            idp_module.identity_investigate_entity(
+                username="jdoe",
+                quick_triage=True,
+                # Explicit opposite settings — quick_triage should override all of them
+                investigation_types=["timeline_analysis", "relationship_analysis"],
+                include_associations=True,
+                include_accounts=True,
+                include_incidents=True,
+                limit=100,
+            )
+        )
+        # Sections present
+        assert "## entity_details" in result
+        assert "## risk_assessment" in result
+        # Sections NOT present — quick_triage forces a 2-element list
+        assert "## timeline_analysis" not in result
+        assert "## relationship_analysis" not in result
+        # Includes forced off: no association/account/incident fragments in details query
+        details_q = next((q for q in queries if "entities(entityIds:" in q), "")
+        assert "associations {" not in details_q
+        assert "accounts {" not in details_q
+        assert "openIncidents" not in details_q
+
+    def test_resolves_then_runs_details(self, idp_module):
+        def graphql_router(body):
+            q = body["query"]
+            if "primaryDisplayNames" in q and "entities" in q:
+                return {
+                    "status_code": 200,
+                    "body": {"data": {"entities": {"nodes": [{"entityId": "e-resolved"}]}}},
+                }
+            if "entityIds" in q:
+                return {
+                    "status_code": 200,
+                    "body": {"data": {"entities": {"nodes": [
+                        {"entityId": "e-resolved", "primaryDisplayName": "Admin", "type": "USER",
+                         "riskScore": 80, "riskScoreSeverity": "HIGH"}
+                    ]}}},
+                }
+            return {"status_code": 500, "body": {"errors": [{"message": "unexpected query"}]}}
+
+        idp_module.falcon.graphql.side_effect = lambda **kw: graphql_router(kw["body"])
+        result = asyncio.run(
+            idp_module.identity_investigate_entity(
+                entity_names=["Admin"],
+                investigation_types=["entity_details"],
+            )
+        )
+        assert "e-resolved" in result
+        assert "Admin" in result
+        # At least two calls — one resolve, one details
+        assert idp_module.falcon.graphql.call_count >= 2
+
+    def test_zero_resolved_entities_returns_clear_error(self, idp_module):
+        idp_module.falcon.graphql.return_value = {
+            "status_code": 200,
+            "body": {"data": {"entities": {"nodes": []}}},
+        }
+        result = asyncio.run(
+            idp_module.identity_investigate_entity(
+                entity_names=["NoSuchUser"],
+                investigation_types=["entity_details"],
+            )
+        )
+        assert "no entit" in result.lower()
+
+    def test_multiple_investigation_types_produce_sections(self, idp_module):
+        def router(body):
+            q = body["query"]
+            if "riskFactors" in q and "entities(entityIds" in q and "openIncidents" in q:
+                return {"status_code": 200, "body": {"data": {"entities": {"nodes": [
+                    {"entityId": "e1", "primaryDisplayName": "A", "type": "USER",
+                     "riskScore": 42, "riskScoreSeverity": "MEDIUM"}
+                ]}}}}
+            if "riskFactors" in q:  # risk assessment (no openIncidents)
+                return {"status_code": 200, "body": {"data": {"entities": {"nodes": [
+                    {"entityId": "e1", "primaryDisplayName": "A",
+                     "riskScore": 42, "riskScoreSeverity": "MEDIUM", "riskFactors": []}
+                ]}}}}
+            return {"status_code": 200, "body": {"data": {"entities": {"nodes": []}}}}
+
+        idp_module.falcon.graphql.side_effect = lambda **kw: router(kw["body"])
+        result = asyncio.run(
+            idp_module.identity_investigate_entity(
+                entity_ids=["e1"],
+                investigation_types=["entity_details", "risk_assessment"],
+            )
+        )
+        # Both investigation types surface in the output
+        assert "entity_details" in result.lower() or "Entity Details" in result
+        assert "risk_assessment" in result.lower() or "Risk Assessment" in result
+
+    def test_tool_registers_as_read(self, idp_module):
+        server = MagicMock()
+        server.tool.return_value = lambda fn: fn
+        idp_module.register_tools(server)
+        assert "identity_investigate_entity" in idp_module.tools
