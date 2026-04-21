@@ -28,3 +28,6 @@ dist/
 
 # Git worktrees
 .worktrees/
+
+# Vendored reference (not for distribution)
+falcon_mcp_idp.py
