@@ -427,9 +427,14 @@ class CloudSecurityModule(BaseModule):
                 f"status={r['current_status']}  first_seen={r['first_seen']}  last_seen={r['last_seen']}"
             )
             if r.get("reason"):
-                lines.append(f"     reason: {r['reason'][:200]}")
+                reason = r["reason"]
+                suffix = "..." if len(reason) > 200 else ""
+                lines.append(f"     reason: {reason[:200]}{suffix}")
             if r["events"]:
                 ev_str = "; ".join(f"{e['event_type']} @ {e['occurred_at']}" for e in r["events"][:5])
+                more = len(r["events"]) - 5
+                if more > 0:
+                    ev_str += f"; (+{more} more)"
                 lines.append(f"     events: {ev_str}")
         lines.append("")
 
@@ -441,20 +446,28 @@ class CloudSecurityModule(BaseModule):
             )
             if c.get("changes"):
                 chg_str = "; ".join(f"{ch['action']} {ch['attribute']}" for ch in c["changes"][:5])
+                more = len(c["changes"]) - 5
+                if more > 0:
+                    chg_str += f"; (+{more} more)"
                 lines.append(f"     changes: {chg_str}")
-            for ev in c.get("resource_events", [])[:3]:
+            rev = c.get("resource_events", [])
+            for ev in rev[:3]:
                 lines.append(
                     f"     triggered by: {ev.get('event_name', '')} "
                     f"user={ev.get('user_name', ev.get('user_id', ''))}"
                 )
+            more_rev = len(rev) - 3
+            if more_rev > 0:
+                lines.append(f"     (+{more_rev} more triggers)")
         lines.append("")
 
         tl = result["timeline"]
         lines.append(f"Merged timeline (most recent first, up to {max_results}):")
         for row in tl:
             if row["kind"] == "risk":
+                synth_tag = " (current state)" if row.get("synthetic") else ""
                 lines.append(
-                    f"  {row['timestamp']}  risk     {row['event_type']}  {row.get('rule_name', '')}"
+                    f"  {row['timestamp']}  risk     {row['event_type']}{synth_tag}  {row.get('rule_name', '')}"
                 )
             else:
                 lines.append(

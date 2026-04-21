@@ -512,3 +512,48 @@ class TestCloudGetRiskTimelineFormatting:
         )
         assert "429" in out
         assert "500 requests/min" in out
+
+    def test_synthetic_rows_rendered_with_current_state_marker(self, cloud_module):
+        body = {
+            "resources": [
+                {
+                    "asset": SAMPLE_TIMELINE_BODY["resources"][0]["asset"],
+                    "timeline": {
+                        "configuration_changes": [],
+                        "risks": {
+                            "risk_instances": [
+                                {
+                                    "id": "ri-synth",
+                                    "rule_name": "silent risk",
+                                    "severity": "low",
+                                    "current_status": "open",
+                                    "reason": "",
+                                    "first_seen": "2026-04-01T00:00:00Z",
+                                    "last_seen": "2026-04-20T00:00:00Z",
+                                    "resolved_at": None,
+                                    "risk_factors_categories": [],
+                                    "events": [],
+                                }
+                            ]
+                        },
+                    },
+                }
+            ]
+        }
+        cloud_module.harness.command.return_value = {"status_code": 200, "body": body}
+        out = asyncio.run(cloud_module.cloud_get_risk_timeline(asset_id="crn:x"))
+        assert "(current state)" in out
+        assert "silent risk" in out
+
+    def test_risk_id_filter_is_honored_end_to_end(self, cloud_module):
+        """Public tool surface must actually apply the risk_id filter, not just pass through."""
+        cloud_module.harness.command.return_value = {
+            "status_code": 200,
+            "body": SAMPLE_TIMELINE_BODY,
+        }
+        out = asyncio.run(
+            cloud_module.cloud_get_risk_timeline(asset_id="crn:x", risk_id="ri-100")
+        )
+        # ri-100's rule name must appear; ri-200's must not.
+        assert "S3 bucket publicly accessible" in out
+        assert "S3 bucket missing encryption" not in out
