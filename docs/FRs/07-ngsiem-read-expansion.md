@@ -132,3 +132,17 @@ From `src/falconpy/ngsiem.py`:
 3. **Lookup file contents via `get_lookup_file`.** Content can be large (e.g.,
    the 385-entry `generative_ai_domains.csv`). Default to metadata only, opt
    in via `include_content=true`. Worth confirming falconpy's native behavior.
+
+---
+
+## Implementation
+
+**Implemented:** 2026-04-21
+**Branch:** `feature/fr07-ngsiem-read-expansion`
+**Plan:** `docs/superpowers/plans/2026-04-21-fr07-ngsiem-read-expansion.md`
+**Spec:** `docs/superpowers/specs/2026-04-21-fr07-ngsiem-read-expansion-design.md`
+
+All 12 tools in the Proposed MCP Tools table shipped as read-only. The
+`ngsiem_ingestion_health` composite tool floated in Open Question 1 was
+deferred — agents compose from `get_provisioning_status` +
+`list_data_connections` when needed.
