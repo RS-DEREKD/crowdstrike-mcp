@@ -317,7 +317,13 @@ class RTRModule(BaseModule):
             lines.append(stderr)
         if not stdout and not stderr:
             lines.append("(no output yet)")
-        return format_text_response("\n".join(lines), raw=True)
+        return format_text_response(
+            "\n".join(lines),
+            tool_name="rtr_check_command_status",
+            raw=True,
+            structured_data={"resource": r},
+            metadata={"cloud_request_id": cloud_request_id, "session_id": session_id},
+        )
 
     async def rtr_list_files(
         self,

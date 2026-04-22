@@ -7,8 +7,6 @@ import json
 import os
 import re
 import sys
-import tempfile
-from datetime import datetime
 from typing import Dict, List, Optional, Union
 from urllib.parse import parse_qs, unquote, urlparse
 
@@ -16,14 +14,6 @@ from crowdstrike_mcp.response_store import ResponseStore
 
 # Large response handling
 LARGE_RESPONSE_THRESHOLD = int(os.environ.get("MCP_LARGE_RESPONSE_THRESHOLD", "20000"))
-MCP_OUTPUT_DIR = os.path.join(tempfile.gettempdir(), "crowdstrike-mcp")
-_current_tool_name = ""
-
-
-def set_current_tool(name: str) -> None:
-    """Set the current tool name for large-response file naming."""
-    global _current_tool_name
-    _current_tool_name = name
 
 
 # Control character pattern (everything except printable ASCII + common whitespace)
@@ -83,15 +73,13 @@ def format_text_response(
 ) -> Union[str, List[Dict[str, str]]]:
     """Format a text string as an MCP-compatible response.
 
-    If the response exceeds LARGE_RESPONSE_THRESHOLD, writes full output to a
-    temp file and returns a compact summary with the file path.
-
-    When ``structured_data`` is provided (opt-in tools), the raw dict is stored
-    in ResponseStore for later field-level extraction via get_stored_response.
+    When ``structured_data`` is provided, the raw dict is stored in ResponseStore
+    for later field-level extraction via get_stored_response, and large payloads
+    are summarized with a ref_id footer.
 
     Args:
         text: Response text to format.
-        tool_name: Tool name for temp file naming.
+        tool_name: Tool name, used for ResponseStore bookkeeping.
         raw: If ``True``, return a plain string (for FastMCP compatibility).
              If ``False`` (default), return ``[{"type": "text", "text": ...}]``.
         structured_data: Raw structured dict from the tool (opt-in).
@@ -106,13 +94,11 @@ def format_text_response(
             text = f"{text}\n\n[Structured data available: {ref_id}]"
         return text if raw else [{"type": "text", "text": text}]
 
-    # Text exceeds threshold
-    if structured_data is not None and ref_id:
-        # Structured data path — store is already populated
-        summary = _extract_summary(text)
+    # Text exceeds threshold — prefer the structured (in-memory) path.
+    summary = _extract_summary(text)
+    if ref_id:
         record_count = ResponseStore.get(ref_id).record_count if ResponseStore.get(ref_id) else 0
 
-        # Find a context identifier from metadata
         context_line = ""
         if metadata:
             for key in ("detection_id", "query", "filter"):
@@ -144,28 +130,22 @@ def format_text_response(
             f'  get_stored_response(ref_id="{ref_id}", search="keyword")              → search records',
             *last_lines,
         ]
-
-        result = "\n".join(parts)
-        return result if raw else [{"type": "text", "text": result}]
     else:
-        # Legacy path — no structured data, use temp file fallback
-        file_path = _write_response_file(text, tool_name or _current_tool_name)
-        summary = _extract_summary(text)
-
+        # Caller didn't provide structured_data — return a summary with no disk write.
+        # Large responses without structured_data are a bug in the calling tool; surface
+        # it loudly so it gets fixed rather than silently spilling sensitive bytes.
         parts = [
             summary,
             "",
-            f"--- RESPONSE TRUNCATED ({len(text):,} chars) ---",
-            f"Full output saved to: {file_path}",
-            "",
-            "To inspect the full data, use bash:",
-            f"  cat '{file_path}' | head -200",
-            f"  python3 -c \"import json; print(open('{file_path}').read()[:5000])\"",
-            f"  grep -i 'keyword' '{file_path}'",
+            f"--- RESPONSE TRUNCATED ({len(text):,} chars, no structured_data) ---",
+            f"Tool '{tool_name or 'unknown'}' returned a response larger than "
+            f"{LARGE_RESPONSE_THRESHOLD:,} chars without calling format_text_response "
+            "with structured_data=. The tail has been dropped. Add structured_data= to "
+            "the tool's format_text_response call to enable get_stored_response lookup.",
         ]
 
-        result = "\n".join(parts)
-        return result if raw else [{"type": "text", "text": result}]
+    result = "\n".join(parts)
+    return result if raw else [{"type": "text", "text": result}]
 
 
 def _extract_summary(text: str, max_lines: int = 40) -> str:
@@ -198,35 +178,6 @@ def _extract_summary(text: str, max_lines: int = 40) -> str:
             break
 
     return "\n".join(summary_lines)
-
-
-def _write_response_file(text: str, tool_name: str = "") -> str:
-    """Write a large response to a temp file and return the path."""
-    os.makedirs(MCP_OUTPUT_DIR, exist_ok=True)
-
-    safe_name = tool_name.replace(" ", "_").replace("/", "_") if tool_name else "response"
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"{safe_name}_{timestamp}.txt"
-    file_path = os.path.join(MCP_OUTPUT_DIR, filename)
-
-    with open(file_path, "w") as f:
-        f.write(text)
-
-    _cleanup_old_files(MCP_OUTPUT_DIR, keep=20)
-    return file_path
-
-
-def _cleanup_old_files(directory: str, keep: int = 20) -> None:
-    """Remove oldest files if directory has more than `keep` files."""
-    try:
-        files = sorted(
-            [os.path.join(directory, f) for f in os.listdir(directory) if os.path.isfile(os.path.join(directory, f))],
-            key=os.path.getmtime,
-        )
-        for f in files[:-keep]:
-            os.remove(f)
-    except OSError:
-        pass
 
 
 def format_error_response(error: str) -> List[Dict[str, str]]:
