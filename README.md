@@ -2,57 +2,43 @@
 
 A modular, multi-transport [Model Context Protocol](https://modelcontextprotocol.io/) server that connects AI assistants to the CrowdStrike Falcon platform. Query NG-SIEM logs, triage alerts, inspect endpoints, manage detection rules, and audit cloud security posture — all through natural language.
 
-**v3.0** — Modular auto-discovery architecture with 76 tools across 13 modules.
+**v4.3** — Modular auto-discovery architecture with 77 tools across 14 modules.
 
 ---
 
 ## Architecture
 
 ```
-                          ┌─────────────────────────────────┐
-                          │         MCP Client              │
-                          │  (Claude Code / Claude Desktop) │
-                          └──────────┬──────────────────────┘
-                                     │
-                          ┌──────────▼──────────────────────┐
-                          │     server.py                   │
-                          │  FalconMCPServer (FastMCP)      │
-                          │                                 │
-                          │  Transports:                    │
-                          │    stdio · sse · streamable-http│
-                          └──────────┬──────────────────────┘
-                                     │
-                          ┌──────────▼──────────────────────┐
-                          │     registry.py                 │
-                          │  Auto-discovers modules/        │
-                          │  via pkgutil                    │
-                          └──────────┬──────────────────────┘
-                                     │
-              ┌──────────────────────┼──────────────────────┐
-              │                      │                      │
-     ┌────────▼───────┐   ┌─────────▼────────┐   ┌────────▼───────┐
-     │  NGSIEMModule  │   │  AlertsModule    │   │  HostsModule   │
-     │  1 tool        │   │  4 tools         │   │  3 tools       │
-     ├────────────────┤   ├──────────────────┤   ├────────────────┤
-     │ EndpointModule │   │ CorrelationMod.  │   │ CloudRegMod.   │
-     │  1 tool        │   │  4 tools         │   │  2 tools       │
-     ├────────────────┤   └──────────────────┘   ├────────────────┤
-     │ CloudSecMod.   │                          │                │
-     │  4 tools       │                          │                │
-     └───────┬────────┘                          └───────┬────────┘
-             │                                           │
-             └────────────────┬──────────────────────────┘
-                              │
-                   ┌──────────▼──────────────────────┐
-                   │     client.py                   │
-                   │  FalconClient                   │
-                   │  Shared OAuth2 session           │
-                   │  Credential resolution chain     │
-                   └─────────────────────────────────┘
-                              │
-                   ┌──────────▼──────────────────────┐
-                   │     CrowdStrike Falcon APIs     │
-                   └─────────────────────────────────┘
+              ┌────────────────────────────────────────────┐
+              │                 MCP Client                 │
+              │  (Claude Code · Claude Desktop · IDEs)     │
+              └───────────────────────┬────────────────────┘
+                                      │  stdio · sse · streamable-http
+              ┌───────────────────────▼────────────────────┐
+              │  server.py  —  FalconMCPServer (FastMCP)   │
+              │  registry.py auto-discovers modules/       │
+              └───────────────────────┬────────────────────┘
+                                      │
+   ┌──────────────────────────────────▼────────────────────────────────────┐
+   │                      modules/  (14 modules · 77 tools)                │
+   │                                                                       │
+   │   Detection & triage:  ngsiem (14) · alerts (4) · correlation (7)     │
+   │   Hosts & response:    hosts (3) · response (2) · rtr (7)             │
+   │   Cloud security:      cloud_security (5) · cloud_registration (2)    │
+   │   Identity & graph:    idp (1) · threat_graph (5)                     │
+   │   Vulnerabilities:     spotlight (6)                                  │
+   │   Case & hunting:      case_management (15) · cao_hunting (5)         │
+   │   Infrastructure:      response_store (2)                             │
+   └──────────────────────────────────┬────────────────────────────────────┘
+                                      │
+              ┌───────────────────────▼────────────────────┐
+              │  client.py — FalconClient                  │
+              │  Shared OAuth2 session · credential chain  │
+              └───────────────────────┬────────────────────┘
+                                      │
+              ┌───────────────────────▼────────────────────┐
+              │          CrowdStrike Falcon APIs           │
+              └────────────────────────────────────────────┘
 ```
 
 ### File Layout
@@ -70,21 +56,24 @@ crowdstrike-mcp/
 │   │
 │   ├── modules/                       # Each module = independent tool group
 │   │   ├── base.py                    # BaseModule ABC
-│   │   ├── ngsiem.py                  # CQL query execution
+│   │   ├── ngsiem.py                  # CQL query + read-only introspection
 │   │   ├── alerts.py                  # Alert retrieval, analysis, triage
 │   │   ├── hosts.py                   # Device lookups + login/network history
 │   │   ├── correlation.py             # Detection rule management
 │   │   ├── cloud_registration.py      # Cloud account + CSPM policies
-│   │   ├── cloud_security.py          # Risks, IOMs, assets, compliance
+│   │   ├── cloud_security.py          # Risks, IOMs, assets, compliance, timeline
 │   │   ├── case_management.py         # Case lifecycle management
 │   │   ├── cao_hunting.py             # Intelligence queries + hunting guides
-│   │   ├── spotlight.py               # Vulnerability evaluation logic
+│   │   ├── spotlight.py               # Vulnerability evaluation + triage
 │   │   ├── idp.py                     # Identity Protection (GraphQL triage)
-│   │   ├── response.py               # Host containment actions
-│   │   └── response_store.py         # Stored response retrieval
+│   │   ├── rtr.py                     # Real-Time Response (read-only subset)
+│   │   ├── threat_graph.py            # Threat Graph pivots (vertices, edges)
+│   │   ├── response.py                # Host containment actions
+│   │   └── response_store.py          # Stored response retrieval
 │   │
-│   ├── resources/                     # MCP TextResources (syntax docs)
-│   │   └── fql_guides.py              # FQL + CQL syntax references
+│   ├── resources/                     # MCP TextResources (syntax + reference docs)
+│   │   ├── fql_guides.py              # FQL + CQL syntax references
+│   │   └── threatgraph_reference.py   # Threat Graph edge-type reference
 │   │
 │   └── common/                        # Shared infrastructure
 │       ├── errors.py                  # Scope-aware API error handling
@@ -354,17 +343,20 @@ Read-only pivots against the CrowdStrike Threat Graph: process trees, file/netwo
 
 ## MCP Resources
 
-The server exposes FQL and CQL syntax documentation as MCP TextResources. AI assistants can read these to self-correct filter syntax without external lookups.
+The server exposes filter-syntax and reference documentation as MCP TextResources. AI assistants can read these to self-correct query/filter syntax or look up valid enum values without external lookups.
 
 | URI | Content |
 |-----|---------|
 | `falcon://fql/alerts` | Alert FQL filter syntax (severity, status, product, timestamp) |
 | `falcon://fql/hosts` | Host FQL filter syntax (hostname, platform, containment) |
+| `falcon://fql/cases` | Case FQL filter syntax |
 | `falcon://fql/cloud-risks` | Cloud risk filter syntax |
 | `falcon://fql/cloud-iom` | IOM detection filter syntax |
 | `falcon://fql/cloud-assets` | Cloud asset filter syntax |
 | `falcon://fql/spotlight-vulnerabilities` | Spotlight vulnerability FQL syntax (aid, cve.id, severity, status) |
 | `falcon://cql/syntax` | CQL query language reference for NG-SIEM |
+| `falcon://rtr/commands` | RTR command allowlist + usage reference |
+| `falcon://reference/threatgraph-edge-types` | Live Threat Graph edge-type vocabulary (populated on first read) |
 
 ---
 
@@ -438,7 +430,7 @@ crowdstrike-mcp --modules cloudsecurity,cloudregistration
 crowdstrike-mcp --modules ngsiem,correlation
 ```
 
-**Available module names:** `alerts`, `caohunting`, `casemanagement`, `cloudsecurity`, `cloudregistration`, `correlation`, `hosts`, `idp`, `ngsiem`, `response`, `responsestore`, `spotlight`, `threatgraph`
+**Available module names:** `alerts`, `caohunting`, `casemanagement`, `cloudsecurity`, `cloudregistration`, `correlation`, `hosts`, `idp`, `ngsiem`, `response`, `responsestore`, `rtr`, `spotlight`, `threatgraph`
 
 ---
 
@@ -579,7 +571,7 @@ Responses exceeding 20KB are automatically written to temporary files with a tru
 
 ### Shared OAuth2 Session
 
-All modules share a single `OAuth2` token through `FalconClient.auth_object`. This means one authentication handshake for all 76 tools, regardless of how many FalconPy service classes are instantiated.
+All modules share a single `OAuth2` token through `FalconClient.auth_object`. This means one authentication handshake for all 77 tools, regardless of how many FalconPy service classes are instantiated.
 
 ---
 
@@ -629,8 +621,13 @@ All modules share a single `OAuth2` token through `FalconClient.auth_object`. Th
 | `case_add_event_evidence` | Case Management | `cases:write` | |
 | `case_add_tags` | Case Management | `cases:write` | |
 | `case_delete_tags` | Case Management | `cases:write` | |
-| `case_upload_file` | Case Management | `cases:write` |
-| `identity_investigate_entity` | Identity Protection | `identity-protection-assessment:read`, `identity-protection-detections:read`, `identity-protection-entities:read`, `identity-protection-timeline:read`, `identity-protection-graphql:write` | Read-only GraphQL query; `graphql:write` required by API surface for all GraphQL calls | |
+| `case_upload_file` | Case Management | `cases:write` | |
+| `cao_search_queries`, `cao_get_queries`, `cao_aggregate`, `cao_search_guides`, `cao_get_guides` | CAO Hunting | `cao-hunting:read` | |
+| `spotlight_*` (all 6 tools) | Spotlight | `spotlight-vulnerabilities:read` | Includes `supported_evaluations`, `query/get_vulnerabilities`, `vulnerabilities_combined`, `get_remediations`, `host_vulns` |
+| `identity_investigate_entity` | Identity Protection | `identity-protection-assessment:read`, `identity-protection-detections:read`, `identity-protection-entities:read`, `identity-protection-timeline:read`, `identity-protection-graphql:write` | Read-only GraphQL query; `graphql:write` required by API surface for all GraphQL calls |
+| `rtr_init_session`, `rtr_pulse_session`, `rtr_execute_command` | Real-Time Response | `real-time-response:write` | Session + command submission use the `:write` scope even though the MCP layer restricts commands to a read-only allowlist |
+| `rtr_list_sessions`, `rtr_check_command_status`, `rtr_list_files`, `rtr_get_extracted_file_contents` | Real-Time Response | `real-time-response:read` | |
+| `threatgraph_*` (all 5 tools) | Threat Graph | `threatgraph:read` | Vertices, edges, ran-on, summary, edge-type discovery |
 
 ### Minimum Scopes by Workflow
 
@@ -640,6 +637,10 @@ All modules share a single `OAuth2` token through `FalconClient.auth_object`. Th
 | **SOC triage** (with status updates) | Above + `alerts:write`, `cases:read`, `cases:write` |
 | **Detection engineering** | `ngsiem:read`, `correlation-rules:read`, `correlation-rules:write` |
 | **Cloud security audit** | `cspm-registration:read`, `cloud-security:read`, `cloud-security-detections:read`, `cloud-security-assets:read` |
+| **Vulnerability management** | `spotlight-vulnerabilities:read` |
+| **Identity investigation** | `identity-protection-assessment:read`, `identity-protection-detections:read`, `identity-protection-entities:read`, `identity-protection-timeline:read`, `identity-protection-graphql:write` |
+| **Threat Graph pivots** | `threatgraph:read` |
+| **Remote triage (RTR)** | `real-time-response:read`, `real-time-response:write` |
 | **Full access** | All scopes above |
 
 ---
