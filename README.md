@@ -2,8 +2,7 @@
 
 A modular, multi-transport [Model Context Protocol](https://modelcontextprotocol.io/) server that connects AI assistants to the CrowdStrike Falcon platform. Query NG-SIEM logs, triage alerts, inspect endpoints, manage detection rules, and audit cloud security posture — all through natural language.
 
-**v3.0** — Modular auto-discovery architecture with 70 tools across 12 modules.
-
+**v3.0** — Modular auto-discovery architecture with 71 tools across 12 modules.
 
 ---
 
@@ -337,6 +336,7 @@ wins. Every `rtr_execute_command` invocation is audited to
 | `cloud_get_iom_detections` | Indicator of Misconfiguration detections with remediation steps |
 | `cloud_query_assets` | Cloud asset inventory across AWS/Azure/GCP |
 | `cloud_compliance_by_account` | Compliance posture aggregated by account and region |
+| `cloud_get_risk_timeline` | Enriched per-asset timeline (GCRN): risk open/close/reopen events + config changes + actors |
 
 ---
 
@@ -607,6 +607,7 @@ All modules share a single `OAuth2` token through `FalconClient.auth_object`. Th
 | `cloud_get_iom_detections` | Cloud Security | `cloud-security-detections:read` | |
 | `cloud_query_assets` | Cloud Security | `cloud-security-assets:read` | |
 | `cloud_compliance_by_account` | Cloud Security | `cloud-security-assets:read` | |
+| `cloud_get_risk_timeline` | Cloud Security | `cloud-security:read` | |
 | `case_query` | Case Management | `cases:read` | |
 | `case_get` | Case Management | `cases:read` | |
 | `case_get_fields` | Case Management | `cases:read` | |
