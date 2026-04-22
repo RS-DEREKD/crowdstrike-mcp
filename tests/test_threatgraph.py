@@ -341,15 +341,11 @@ class TestThreatGraphGetRanOn:
         assert "1000" in result or "limit" in result.lower()
 
     def test_requires_value(self, threatgraph_module):
-        result = asyncio.run(
-            threatgraph_module.threatgraph_get_ran_on(value="", type="domain")
-        )
+        result = asyncio.run(threatgraph_module.threatgraph_get_ran_on(value="", type="domain"))
         assert "value" in result.lower() or "required" in result.lower()
 
     def test_requires_type(self, threatgraph_module):
-        result = asyncio.run(
-            threatgraph_module.threatgraph_get_ran_on(value="x", type="")
-        )
+        result = asyncio.run(threatgraph_module.threatgraph_get_ran_on(value="x", type=""))
         assert "type" in result.lower() or "required" in result.lower()
 
 
