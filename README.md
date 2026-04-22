@@ -2,7 +2,7 @@
 
 A modular, multi-transport [Model Context Protocol](https://modelcontextprotocol.io/) server that connects AI assistants to the CrowdStrike Falcon platform. Query NG-SIEM logs, triage alerts, inspect endpoints, manage detection rules, and audit cloud security posture — all through natural language.
 
-**v3.0** — Modular auto-discovery architecture with 71 tools across 12 modules.
+**v3.0** — Modular auto-discovery architecture with 76 tools across 13 modules.
 
 ---
 
@@ -321,6 +321,18 @@ wins. Every `rtr_execute_command` invocation is audited to
 |------|-------------|
 | `identity_investigate_entity` | One-call identity triage — resolve user/device by name/email/IP/domain, return risk + timeline + relationships. |
 
+### Threat Graph — `modules/threat_graph.py`
+
+Read-only pivots against the CrowdStrike Threat Graph: process trees, file/network/identity edges, and indicator-to-host lookups. Includes 1 dynamic MCP resource (`falcon://reference/threatgraph-edge-types`) populated on first read.
+
+| Tool | Description |
+|------|-------------|
+| `threatgraph_get_vertices` | Fetch vertex metadata by composite ID (process, file, domain, user, etc.) |
+| `threatgraph_get_edges` | Walk outgoing/incoming edges of one edge type from a set of vertex IDs |
+| `threatgraph_get_ran_on` | Find hosts/processes where an indicator (hash, domain, IP) was observed |
+| `threatgraph_get_summary` | Triage-ready one-line-per-vertex summary for a set of vertex IDs |
+| `threatgraph_get_edge_types` | Refresh and return the live list of valid Threat Graph edge types |
+
 ### Cloud Registration — `modules/cloud_registration.py`
 
 | Tool | Description |
@@ -426,7 +438,7 @@ crowdstrike-mcp --modules cloudsecurity,cloudregistration
 crowdstrike-mcp --modules ngsiem,correlation
 ```
 
-**Available module names:** `alerts`, `caohunting`, `casemanagement`, `cloudsecurity`, `cloudregistration`, `correlation`, `hosts`, `idp`, `ngsiem`, `response`, `responsestore`, `spotlight`
+**Available module names:** `alerts`, `caohunting`, `casemanagement`, `cloudsecurity`, `cloudregistration`, `correlation`, `hosts`, `idp`, `ngsiem`, `response`, `responsestore`, `spotlight`, `threatgraph`
 
 ---
 
@@ -567,7 +579,7 @@ Responses exceeding 20KB are automatically written to temporary files with a tru
 
 ### Shared OAuth2 Session
 
-All modules share a single `OAuth2` token through `FalconClient.auth_object`. This means one authentication handshake for all 70 tools, regardless of how many FalconPy service classes are instantiated.
+All modules share a single `OAuth2` token through `FalconClient.auth_object`. This means one authentication handshake for all 76 tools, regardless of how many FalconPy service classes are instantiated.
 
 ---
 

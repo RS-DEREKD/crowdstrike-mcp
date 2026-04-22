@@ -85,6 +85,11 @@ EXPECTED_READ_TOOLS = {
     "rtr_get_extracted_file_contents",
     "get_stored_response",
     "list_stored_responses",
+    "threatgraph_get_edge_types",
+    "threatgraph_get_vertices",
+    "threatgraph_get_edges",
+    "threatgraph_get_ran_on",
+    "threatgraph_get_summary",
 }
 
 EXPECTED_WRITE_TOOLS = {

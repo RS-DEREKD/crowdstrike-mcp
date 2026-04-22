@@ -105,6 +105,12 @@ OPERATION_SCOPES = {
     "RTR_CheckActiveResponderCommandStatus": ["real-time-response:read"],
     "RTR_GetExtractedFileContents": ["real-time-response:read"],
     "RTR_ListFilesV2": ["real-time-response:read"],
+    # Threat Graph
+    "entities_vertices_getv2": ["threatgraph:read"],
+    "combined_edges_get": ["threatgraph:read"],
+    "combined_ran_on_get": ["threatgraph:read"],
+    "combined_summary_get": ["threatgraph:read"],
+    "queries_edgetypes_get": ["threatgraph:read"],
 }
 
 
