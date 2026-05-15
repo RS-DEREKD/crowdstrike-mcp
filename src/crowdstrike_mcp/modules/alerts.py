@@ -221,13 +221,34 @@ class AlertsModule(BaseModule):
     ) -> str:
         """Update alert status, add comments and tags."""
         cleaned_ids = [extract_detection_id(cid) for cid in composite_ids]
-        result = self._update_alert_status(cleaned_ids, status, comment, tags)
+
+        # Issue #21: CrowdStrike's update_alerts_v3 backend returns an opaque
+        # HTTP 500 for any product=thirdparty composite ID (confirmed
+        # platform-side defect). Skip those proactively so a mixed batch still
+        # succeeds for the rest, and give the analyst an actionable message.
+        thirdparty_ids = [c for c in cleaned_ids if parse_composite_id(c)["product_type"] == "thirdparty"]
+        updatable_ids = [c for c in cleaned_ids if c not in thirdparty_ids]
+
+        skip_note = None
+        if thirdparty_ids:
+            skip_note = (
+                f"Skipped {len(thirdparty_ids)} thirdparty alert(s) — CrowdStrike's "
+                f"update_alerts_v3 API returns HTTP 500 for product=thirdparty "
+                f"(known platform-side defect, tracked in issue #21). Close these in "
+                f"the Falcon console until CrowdStrike support resolves it:\n" + "\n".join(f"  - {c}" for c in thirdparty_ids)
+            )
+
+        if not updatable_ids:
+            # Nothing we can act on via the API; report the skip clearly.
+            return format_text_response(skip_note, raw=True)
+
+        result = self._update_alert_status(updatable_ids, status, comment, tags)
 
         if not result.get("success"):
-            return format_text_response(
-                f"Failed to update alerts: {result.get('error')}",
-                raw=True,
-            )
+            msg = f"Failed to update alerts: {result.get('error')}"
+            if skip_note:
+                msg += f"\n\n{skip_note}"
+            return format_text_response(msg, raw=True)
 
         lines = [
             f"Successfully updated {result['updated_count']} alert(s)",
@@ -237,6 +258,9 @@ class AlertsModule(BaseModule):
             lines.append(f"Comment added: {comment}")
         if result.get("tags_added"):
             lines.append(f"Tags added: {', '.join(result['tags_added'])}")
+        if skip_note:
+            lines.append("")
+            lines.append(skip_note)
 
         return format_text_response("\n".join(lines), raw=True)
 

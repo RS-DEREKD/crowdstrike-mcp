@@ -199,7 +199,8 @@ CQL_SYNTAX = """\
 
 ## Time Functions
 - `now()` — Current timestamp
-- `start` — Query start time (set by time_range parameter)
+- The query window is set by ngsiem_query's `time_range` (relative, e.g. '1d', '7d')
+  or the `start_time`/`end_time` parameters (absolute: ISO-8601 or epoch), not in CQL
 
 ## Example Queries
 ```
