@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import re
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Annotated, Optional
 
 from falconpy import NGSIEM
@@ -140,14 +140,29 @@ class NGSIEMModule(BaseModule):
     async def ngsiem_query(
         self,
         query: Annotated[str, "The NGSIEM/CQL query to execute"],
-        start_time: Annotated[str, "Time range (e.g. '1h', '1d', '7d', '30d')"] = "1d",
+        time_range: Annotated[str, "Relative lookback window (e.g. '1h', '1d', '7d', '30d'). Ignored if start_time is given."] = "1d",
+        start_time: Annotated[
+            Optional[str],
+            "Absolute window start: ISO-8601 (e.g. '2026-05-15T13:00:00Z') or epoch seconds/millis. Overrides time_range.",
+        ] = None,
+        end_time: Annotated[
+            Optional[str],
+            "Absolute window end: ISO-8601 or epoch seconds/millis. Defaults to now when start_time is set.",
+        ] = None,
         max_results: Annotated[int, "Maximum results to return (default: 100, max: 1000)"] = 100,
         fields: Annotated[Optional[str], "Comma-separated field names for server-side projection via select()"] = None,
     ) -> str:
         """Execute a CQL query on the search-all repository."""
         max_results = min(max(max_results, 1), 1000)
 
-        result = self._execute_query(query, start_time, max_results, fields=fields)
+        result = self._execute_query(
+            query,
+            time_range=time_range,
+            start_time=start_time,
+            end_time=end_time,
+            max_results=max_results,
+            fields=fields,
+        )
 
         if result.get("success"):
             events = result.get("events", [])
@@ -190,7 +205,7 @@ class NGSIEMModule(BaseModule):
                 tool_name="ngsiem_query",
                 raw=True,
                 structured_data=result,
-                metadata={"query": result.get("query"), "time_range": start_time},
+                metadata={"query": result.get("query"), "time_range": result.get("time_range")},
             )
         else:
             error_text = (
@@ -204,14 +219,56 @@ class NGSIEMModule(BaseModule):
     # Internal query execution (also called by AlertsModule)
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _to_epoch_ms(value: str) -> str:
+        """Convert an absolute time to an epoch-millisecond string.
+
+        The NGSIEM/LogScale start_search API rejects ISO-8601 timestamps
+        with HTTP 400 "No content was received for this request"; it accepts
+        only relative durations ('1d') or epoch milliseconds. Absolute inputs
+        (ISO-8601, epoch seconds, or epoch millis) must be normalized to ms.
+        """
+        s = str(value).strip()
+        if s.isdigit():
+            n = int(s)
+            # Epoch-seconds (~1.7e9 today) vs epoch-millis (~1.7e12).
+            return str(n * 1000 if n < 10**12 else n)
+        # ISO-8601; tolerate a trailing 'Z' which fromisoformat rejects < 3.11.
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return str(int(dt.timestamp() * 1000))
+
     def _execute_query(
         self,
         query: str,
-        start_time: str = "1d",
+        time_range: str = "1d",
+        start_time: str | None = None,
+        end_time: str | None = None,
         max_results: int = 100,
         fields: str | None = None,
     ) -> dict:
-        """Execute a complete NGSIEM query. Returns result dict."""
+        """Execute a complete NGSIEM query. Returns result dict.
+
+        When ``start_time`` is supplied an absolute window is used (converted
+        to epoch-ms); otherwise the relative ``time_range`` string is sent
+        through unchanged (the API accepts '1d', '7d', ...).
+        """
+        # Resolve the time window into API params + a human-readable label.
+        try:
+            if start_time:
+                api_start: str = self._to_epoch_ms(start_time)
+                api_end: str | None = self._to_epoch_ms(end_time) if end_time else None
+                display_range = f"{start_time} → {end_time or 'now'}"
+            else:
+                api_start = time_range
+                api_end = None
+                display_range = time_range
+        except (ValueError, TypeError) as e:
+            return {
+                "success": False,
+                "error": f"Invalid time value (use ISO-8601, epoch, or a relative range like '1d'): {e}",
+            }
         # Field projection: append | select([...]) to query if fields specified
         field_projection = None
         field_projection_skipped = None
@@ -232,12 +289,15 @@ class NGSIEMModule(BaseModule):
         # Start search
         try:
             falcon = self._service(NGSIEM)
-            response = falcon.start_search(
-                repository=self.repository,
-                query_string=timestamped_query,
-                start=start_time,
-                is_live=False,
-            )
+            search_kwargs = {
+                "repository": self.repository,
+                "query_string": timestamped_query,
+                "start": api_start,
+                "is_live": False,
+            }
+            if api_end is not None:
+                search_kwargs["end"] = api_end
+            response = falcon.start_search(**search_kwargs)
 
             if response["status_code"] != 200:
                 error_details = []
@@ -313,7 +373,7 @@ class NGSIEMModule(BaseModule):
                         "events_returned": len(events),
                         "results_truncated": truncated,
                         "query": query,  # Original query without MCP comment
-                        "time_range": start_time,
+                        "time_range": display_range,
                         "events": events,
                         "field_projection": field_projection,
                         "field_projection_skipped": field_projection_skipped,

@@ -237,6 +237,12 @@ class AlertsModule(BaseModule):
             lines.append(f"Comment added: {comment}")
         if result.get("tags_added"):
             lines.append(f"Tags added: {', '.join(result['tags_added'])}")
+        if result.get("spurious_500_verified"):
+            # Issue #21: CrowdStrike's update_alerts_v3 returns a bogus HTTP 500
+            # for product=thirdparty IDs even though the write is applied.
+            lines.append(
+                "Note: CrowdStrike returned a spurious HTTP 500 for thirdparty alert(s); the update was verified applied by re-fetching (issue #21)."
+            )
 
         return format_text_response("\n".join(lines), raw=True)
 
@@ -414,8 +420,22 @@ class AlertsModule(BaseModule):
                 action_parameters=action_params,
             )
 
+            spurious_500_verified = False
             if response["status_code"] != 200:
-                return {"success": False, "error": format_api_error(response, "Failed to update alerts", operation="update_alerts_v3")}
+                # Issue #21: CrowdStrike's update_alerts_v3 returns a spurious
+                # HTTP 500 for product=thirdparty composite IDs even though the
+                # write is applied. Verify by re-fetching; treat a confirmed
+                # status change as success. Scoped to all-thirdparty batches so
+                # genuine errors for other products are never masked.
+                if (
+                    response["status_code"] == 500
+                    and composite_ids
+                    and all(parse_composite_id(c)["product_type"] == "thirdparty" for c in composite_ids)
+                    and self._verify_status_applied(alerts, composite_ids, status.lower())
+                ):
+                    spurious_500_verified = True
+                else:
+                    return {"success": False, "error": format_api_error(response, "Failed to update alerts", operation="update_alerts_v3")}
 
             return {
                 "success": True,
@@ -423,9 +443,27 @@ class AlertsModule(BaseModule):
                 "new_status": status.lower(),
                 "comment_added": comment is not None,
                 "tags_added": tags or [],
+                "spurious_500_verified": spurious_500_verified,
             }
         except Exception as e:
             return {"success": False, "error": f"Error updating alerts: {str(e)}"}
+
+    def _verify_status_applied(self, alerts, composite_ids, expected_status) -> bool:
+        """Re-fetch the alerts and confirm every one reached ``expected_status``.
+
+        Used to disambiguate CrowdStrike's spurious HTTP 500 on thirdparty
+        updates (issue #21) from a genuine failure.
+        """
+        try:
+            resp = alerts.get_alerts_v2(composite_ids=composite_ids)
+            if resp.get("status_code") != 200:
+                return False
+            resources = resp.get("body", {}).get("resources", [])
+            if len(resources) != len(composite_ids):
+                return False
+            return all(r.get("status") == expected_status for r in resources)
+        except Exception:
+            return False
 
     # ------------------------------------------------------------------
     # Multi-type alert analysis with enrichment routing
