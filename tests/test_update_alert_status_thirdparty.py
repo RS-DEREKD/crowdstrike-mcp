@@ -1,11 +1,11 @@
-"""Issue #21: update_alert_status must not fire an opaque HTTP 500 at the
-CrowdStrike API for thirdparty composite IDs.
+"""Issue #21: CrowdStrike's update_alerts_v3 returns a SPURIOUS HTTP 500 for
+product=thirdparty composite IDs — but the write is actually applied
+server-side (confirmed live: status changes stick despite the 500).
 
-The CrowdStrike update_alerts_v3 backend returns HTTP 500 for any
-product=thirdparty composite ID (confirmed platform-side defect, see issue
-#21). Until CrowdStrike support resolves it, the tool proactively skips
-thirdparty IDs with an actionable message and still processes the rest of
-a mixed batch.
+So the tool must NOT report failure or skip thirdparty IDs. On a 500 for
+thirdparty IDs it re-fetches the alert and, if the requested status was
+applied, reports success. Non-thirdparty 500s are still genuine failures
+and must not be masked by a verification re-fetch.
 """
 
 import asyncio
@@ -15,7 +15,6 @@ import pytest
 
 NG = "bf7f666a6cb8419ea851663ecef09c24:ngsiem:bf7f666a6cb8419ea851663ecef09c24:aaaa"
 TP = "bf7f666a6cb8419ea851663ecef09c24:thirdparty:bf7f666a6cb8419ea851663ecef09c24:bbbb"
-TP2 = "bf7f666a6cb8419ea851663ecef09c24:thirdparty:bf7f666a6cb8419ea851663ecef09c24:cccc"
 
 
 @pytest.fixture
@@ -25,35 +24,54 @@ def alerts_module(mock_client):
 
         module = AlertsModule(mock_client)
         mock_alerts = MagicMock()
-        mock_alerts.update_alerts_v3.return_value = {
-            "status_code": 200,
-            "body": {"meta": {"writes": {"resources_affected": 1}}},
-        }
         module._service = lambda cls: mock_alerts
         module._mock_alerts = mock_alerts
         return module
 
 
-def test_all_thirdparty_does_not_call_api(alerts_module):
-    out = asyncio.run(alerts_module.update_alert_status([TP, TP2], "closed"))
-    alerts_module._mock_alerts.update_alerts_v3.assert_not_called()
-    assert "thirdparty" in out.lower()
-    assert "#21" in out  # references the tracking issue
-    assert "console" in out.lower()  # tells analyst where to close it
+def _resp(code, body=None):
+    return {"status_code": code, "body": body or {}}
 
 
-def test_mixed_batch_updates_only_non_thirdparty(alerts_module):
-    out = asyncio.run(alerts_module.update_alert_status([NG, TP], "closed"))
-    alerts_module._mock_alerts.update_alerts_v3.assert_called_once()
-    _, kwargs = alerts_module._mock_alerts.update_alerts_v3.call_args
-    assert kwargs["composite_ids"] == [NG]
-    assert "1" in out  # one updated
-    assert "thirdparty" in out.lower()  # one skipped, surfaced
+def test_thirdparty_spurious_500_but_status_applied_is_success(alerts_module):
+    m = alerts_module._mock_alerts
+    m.update_alerts_v3.return_value = _resp(500, {"errors": [{"code": 500, "message": "Internal Server Error"}]})
+    # Re-fetch shows the status DID change despite the 500.
+    m.get_alerts_v2.return_value = _resp(200, {"resources": [{"status": "closed"}]})
 
+    out = asyncio.run(alerts_module.update_alert_status([TP], "closed"))
 
-def test_non_thirdparty_only_unchanged(alerts_module):
-    out = asyncio.run(alerts_module.update_alert_status([NG], "closed"))
-    _, kwargs = alerts_module._mock_alerts.update_alerts_v3.call_args
-    assert kwargs["composite_ids"] == [NG]
+    m.get_alerts_v2.assert_called_once()
     assert "Successfully updated 1" in out
-    assert "thirdparty" not in out.lower()
+    assert "thirdparty" in out.lower()  # surfaces the spurious-500/verified caveat
+
+
+def test_thirdparty_500_and_status_not_applied_is_failure(alerts_module):
+    m = alerts_module._mock_alerts
+    m.update_alerts_v3.return_value = _resp(500, {"errors": [{"code": 500, "message": "Internal Server Error"}]})
+    # Re-fetch shows the status did NOT change — a real failure.
+    m.get_alerts_v2.return_value = _resp(200, {"resources": [{"status": "new"}]})
+
+    out = asyncio.run(alerts_module.update_alert_status([TP], "closed"))
+
+    assert "Failed to update" in out
+
+
+def test_non_thirdparty_500_is_failure_without_masking(alerts_module):
+    m = alerts_module._mock_alerts
+    m.update_alerts_v3.return_value = _resp(500, {"errors": [{"code": 500, "message": "Internal Server Error"}]})
+
+    out = asyncio.run(alerts_module.update_alert_status([NG], "closed"))
+
+    assert "Failed to update" in out
+    m.get_alerts_v2.assert_not_called()  # do not verify-mask real errors for other products
+
+
+def test_http_200_success_unchanged(alerts_module):
+    m = alerts_module._mock_alerts
+    m.update_alerts_v3.return_value = _resp(200, {"meta": {"writes": {"resources_affected": 1}}})
+
+    out = asyncio.run(alerts_module.update_alert_status([NG], "closed"))
+
+    assert "Successfully updated 1" in out
+    m.get_alerts_v2.assert_not_called()
