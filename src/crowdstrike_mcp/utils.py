@@ -10,7 +10,7 @@ import sys
 from typing import Dict, List, Optional, Union
 from urllib.parse import parse_qs, unquote, urlparse
 
-from crowdstrike_mcp.response_store import ResponseStore
+from crowdstrike_mcp.response_store import ResponseStore, build_truncation_notice
 
 # Large response handling
 LARGE_RESPONSE_THRESHOLD = int(os.environ.get("MCP_LARGE_RESPONSE_THRESHOLD", "20000"))
@@ -114,39 +114,15 @@ def format_text_response(
     # Text exceeds threshold — prefer the structured (in-memory) path.
     summary = _extract_summary(text)
     if ref_id:
-        record_count = ResponseStore.get(ref_id).record_count if ResponseStore.get(ref_id) else 0
-
-        context_line = ""
-        if metadata:
-            for key in ("detection_id", "query", "filter"):
-                val = metadata.get(key)
-                if val:
-                    context_line = f"\nTool: {tool_name} | {key}: {val}"
-                    break
-
-        triggering_pid = metadata.get("triggering_pid") if metadata else None
-        if triggering_pid:
-            last_lines = [
-                f'  get_stored_response(ref_id="{ref_id}", record_key="{triggering_pid}")  → triggering process',
-                f'  get_stored_response(ref_id="{ref_id}", record_index=0)                 → first event (chronological)',
-            ]
-        else:
-            last_lines = [
-                f'  get_stored_response(ref_id="{ref_id}", record_index=0)                → full first record',
-            ]
-
-        parts = [
-            summary,
-            "",
-            f"--- RESPONSE TRUNCATED ({len(text):,} chars) ---",
-            f"Structured data stored as: {ref_id} ({record_count} records){context_line}",
-            "",
-            "To query this data use the get_stored_response tool:",
-            f'  get_stored_response(ref_id="{ref_id}")                                → metadata overview',
-            f'  get_stored_response(ref_id="{ref_id}", fields="source.ip,user.name")  → extract fields',
-            f'  get_stored_response(ref_id="{ref_id}", search="keyword")              → search records',
-            *last_lines,
-        ]
+        stored = ResponseStore.get(ref_id)
+        result = build_truncation_notice(
+            summary=summary,
+            text_len=len(text),
+            ref_id=ref_id,
+            record_count=stored.record_count if stored else 0,
+            tool_name=tool_name,
+            metadata=metadata,
+        )
     else:
         # Caller didn't provide structured_data — return a summary with no disk write.
         # Large responses without structured_data are a bug in the calling tool; surface
@@ -160,8 +136,8 @@ def format_text_response(
             "with structured_data=. The tail has been dropped. Add structured_data= to "
             "the tool's format_text_response call to enable get_stored_response lookup.",
         ]
+        result = "\n".join(parts)
 
-    result = "\n".join(parts)
     return result if raw else [{"type": "text", "text": result}]
 
 

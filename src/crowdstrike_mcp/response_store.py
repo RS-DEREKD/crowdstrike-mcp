@@ -39,6 +39,51 @@ def reset_response_session(token: Token) -> None:
     _session_id.reset(token)
 
 
+# Top-level keys that denote the primary record collection in stored payloads,
+# in preference order. Avoids conflating heterogeneous lists (e.g. ngsiem_query's
+# `events` records vs its `field_projection` list of field names).
+_PRIMARY_RECORD_KEYS = (
+    "records",
+    "events",
+    "behaviors",
+    "investigations",
+    "vulns",
+    "vulnerabilities",
+    "risks",
+    "resources",
+    "vertices",
+    "edges",
+    "hosts",
+    "login_history",
+    "network_history",
+    "entity_ids",
+    "data",
+    "results",
+)
+
+
+def select_records(data: dict) -> list:
+    """Return the primary record list from a stored payload.
+
+    Resolution order: a known primary key holding a list, else the longest
+    top-level list, else top-level dict values treated as single records
+    (e.g. ``{"record": {...}}``), else empty.
+    """
+    if not isinstance(data, dict):
+        return []
+    for key in _PRIMARY_RECORD_KEYS:
+        value = data.get(key)
+        if isinstance(value, list):
+            return value
+    lists = [v for v in data.values() if isinstance(v, list)]
+    if lists:
+        return max(lists, key=len)
+    dicts = [v for v in data.values() if isinstance(v, dict)]
+    if dicts:
+        return dicts
+    return []
+
+
 @dataclass
 class StoredResponse:
     """A stored structured response from an MCP tool."""
@@ -66,6 +111,9 @@ class ResponseStore:
     _counters: dict[str, int] = {}
     _max_entries: int = 50
     _max_sessions: int = 100
+    # Entries older than this are treated as absent (bounds how long sensitive
+    # Falcon data stays resident). Mirrors the 25-min auth-session window.
+    _ttl_seconds: int = 25 * 60
 
     @classmethod
     def store(
@@ -112,17 +160,22 @@ class ResponseStore:
             if not entries:
                 return None
             sr = entries.get(ref_id)
-            if sr is not None:
-                entries.move_to_end(ref_id)  # reading refreshes LRU recency
+            if sr is None:
+                return None
+            if cls._is_expired(sr):
+                del entries[ref_id]
+                return None
+            entries.move_to_end(ref_id)  # reading refreshes LRU recency
             return sr
 
     @classmethod
     def list_refs(cls) -> list[dict]:
-        """Return summary of all stored responses for the current session."""
+        """Return summary of all non-expired stored responses for the current session."""
         with cls._lock:
             entries = cls._sessions.get(_session_id.get())
             if not entries:
                 return []
+            live = [sr for sr in entries.values() if not cls._is_expired(sr)]
             return [
                 {
                     "ref_id": sr.ref_id,
@@ -131,13 +184,26 @@ class ResponseStore:
                     "record_count": sr.record_count,
                     "metadata": sr.metadata,
                 }
-                for sr in entries.values()
+                for sr in live
             ]
 
     @classmethod
+    def clear_session(cls, session_id: str) -> None:
+        """Drop a session's entire partition (e.g. when its auth session is evicted)."""
+        with cls._lock:
+            cls._sessions.pop(session_id, None)
+            cls._counters.pop(session_id, None)
+
+    @classmethod
+    def _is_expired(cls, sr: StoredResponse) -> bool:
+        """True if the entry is older than the TTL."""
+        age = (datetime.now(timezone.utc) - sr.timestamp).total_seconds()
+        return age > cls._ttl_seconds
+
+    @classmethod
     def _count_records(cls, data: dict) -> int:
-        """Count records generically: sum lengths of all top-level list values."""
-        return sum(len(v) for v in data.values() if isinstance(v, list))
+        """Count records using the primary record list (see select_records)."""
+        return len(select_records(data))
 
     @classmethod
     def _reset(cls) -> None:
@@ -145,3 +211,58 @@ class ResponseStore:
         with cls._lock:
             cls._sessions.clear()
             cls._counters.clear()
+
+
+# Metadata keys used (in order) to build the truncation-notice context line.
+_CONTEXT_KEYS = ("detection_id", "query", "filter")
+
+
+def build_truncation_notice(
+    *,
+    summary: str,
+    text_len: int,
+    ref_id: str,
+    record_count: int,
+    tool_name: str,
+    metadata: dict | None,
+) -> str:
+    """Build the truncation notice for a large, stored response.
+
+    Authoring the get_stored_response usage hints is store-domain knowledge, so
+    it lives here rather than in the generic text formatter. The record-key hint
+    is driven by a generic ``record_key`` metadata field (``triggering_pid`` is
+    accepted as a back-compat alias) — the formatter need not know either name.
+    """
+    metadata = metadata or {}
+
+    context_line = ""
+    for key in _CONTEXT_KEYS:
+        val = metadata.get(key)
+        if val:
+            context_line = f"\nTool: {tool_name} | {key}: {val}"
+            break
+
+    record_key = metadata.get("record_key") or metadata.get("triggering_pid")
+    if record_key:
+        last_lines = [
+            f'  get_stored_response(ref_id="{ref_id}", record_key="{record_key}")  → keyed record',
+            f'  get_stored_response(ref_id="{ref_id}", record_index=0)                 → first record (chronological)',
+        ]
+    else:
+        last_lines = [
+            f'  get_stored_response(ref_id="{ref_id}", record_index=0)                → full first record',
+        ]
+
+    parts = [
+        summary,
+        "",
+        f"--- RESPONSE TRUNCATED ({text_len:,} chars) ---",
+        f"Structured data stored as: {ref_id} ({record_count} records){context_line}",
+        "",
+        "To query this data use the get_stored_response tool:",
+        f'  get_stored_response(ref_id="{ref_id}")                                → metadata overview',
+        f'  get_stored_response(ref_id="{ref_id}", fields="source.ip,user.name")  → extract fields',
+        f'  get_stored_response(ref_id="{ref_id}", search="keyword")              → search records',
+        *last_lines,
+    ]
+    return "\n".join(parts)
