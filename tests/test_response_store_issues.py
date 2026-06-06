@@ -17,7 +17,12 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from crowdstrike_mcp.modules.response_store import ResponseStoreModule
-from crowdstrike_mcp.response_store import ResponseStore, build_truncation_notice
+from crowdstrike_mcp.response_store import (
+    ResponseStore,
+    build_truncation_notice,
+    reset_response_session,
+    set_response_session,
+)
 from crowdstrike_mcp.utils import LARGE_RESPONSE_THRESHOLD, format_text_response
 
 
@@ -120,6 +125,25 @@ class TestTtlAndClear:
         assert ResponseStore.get(ref) is not None
         ResponseStore.clear_session("local")  # default test session
         assert ResponseStore.get(ref) is None
+
+    def test_evicting_stale_auth_client_clears_its_store_partition(self):
+        from crowdstrike_mcp.common import session_auth
+
+        key = "sess-xyz"
+        tok = set_response_session(key)
+        ResponseStore.store({"records": [{"a": 1}]}, tool_name="t")
+        reset_response_session(tok)
+
+        session_auth._client_cache[key] = (object(), 0.0)  # ts=0 → stale
+        try:
+            session_auth._evict_stale()
+            tok = set_response_session(key)
+            try:
+                assert ResponseStore.list_refs() == []  # partition dropped with the auth session
+            finally:
+                reset_response_session(tok)
+        finally:
+            session_auth._client_cache.pop(key, None)
 
 
 # --- #30 — extracted notice helper + generic record-key hint ----------------
