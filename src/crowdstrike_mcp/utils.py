@@ -7,23 +7,13 @@ import json
 import os
 import re
 import sys
-import tempfile
-from datetime import datetime
 from typing import Dict, List, Optional, Union
 from urllib.parse import parse_qs, unquote, urlparse
 
-from crowdstrike_mcp.response_store import ResponseStore
+from crowdstrike_mcp.response_store import ResponseStore, build_truncation_notice
 
 # Large response handling
 LARGE_RESPONSE_THRESHOLD = int(os.environ.get("MCP_LARGE_RESPONSE_THRESHOLD", "20000"))
-MCP_OUTPUT_DIR = os.path.join(tempfile.gettempdir(), "crowdstrike-mcp")
-_current_tool_name = ""
-
-
-def set_current_tool(name: str) -> None:
-    """Set the current tool name for large-response file naming."""
-    global _current_tool_name
-    _current_tool_name = name
 
 
 # Control character pattern (everything except printable ASCII + common whitespace)
@@ -74,6 +64,18 @@ def load_credentials(config_path: Optional[str] = None) -> Optional[Dict[str, st
         return None
 
 
+def _is_large_payload(data: dict) -> bool:
+    """True if structured data is big enough to warrant storing.
+
+    Lets compact-summary tools (small text, large data — e.g. ngsiem_query) keep
+    a recoverable ref while trivially small responses skip the store entirely.
+    """
+    try:
+        return len(json.dumps(data, default=str)) > LARGE_RESPONSE_THRESHOLD
+    except (TypeError, ValueError):
+        return True  # unserializable → keep it rather than silently drop
+
+
 def format_text_response(
     text: str,
     tool_name: str = "",
@@ -83,89 +85,60 @@ def format_text_response(
 ) -> Union[str, List[Dict[str, str]]]:
     """Format a text string as an MCP-compatible response.
 
-    If the response exceeds LARGE_RESPONSE_THRESHOLD, writes full output to a
-    temp file and returns a compact summary with the file path.
-
-    When ``structured_data`` is provided (opt-in tools), the raw dict is stored
-    in ResponseStore for later field-level extraction via get_stored_response.
+    When ``structured_data`` is provided, the raw dict is stored in ResponseStore
+    for later field-level extraction via get_stored_response, and large payloads
+    are summarized with a ref_id footer.
 
     Args:
         text: Response text to format.
-        tool_name: Tool name for temp file naming.
+        tool_name: Tool name, used for ResponseStore bookkeeping.
         raw: If ``True``, return a plain string (for FastMCP compatibility).
              If ``False`` (default), return ``[{"type": "text", "text": ...}]``.
         structured_data: Raw structured dict from the tool (opt-in).
         metadata: Query context, filters, alert ID, etc. for the store.
     """
+    # Only persist when something is actually large: either the rendered text
+    # (so the model can recover the truncated tail) or the structured payload
+    # itself (compact-summary tools like ngsiem_query keep text small but carry
+    # large data). Trivially small responses must not consume buffer slots.
+    text_large = len(text) > LARGE_RESPONSE_THRESHOLD
     ref_id = None
-    if structured_data is not None:
+    if structured_data is not None and (text_large or _is_large_payload(structured_data)):
         ref_id = ResponseStore.store(structured_data, tool_name, metadata)
 
-    if len(text) <= LARGE_RESPONSE_THRESHOLD:
+    if not text_large:
         if ref_id:
             text = f"{text}\n\n[Structured data available: {ref_id}]"
         return text if raw else [{"type": "text", "text": text}]
 
-    # Text exceeds threshold
-    if structured_data is not None and ref_id:
-        # Structured data path — store is already populated
-        summary = _extract_summary(text)
-        record_count = ResponseStore.get(ref_id).record_count if ResponseStore.get(ref_id) else 0
-
-        # Find a context identifier from metadata
-        context_line = ""
-        if metadata:
-            for key in ("detection_id", "query", "filter"):
-                val = metadata.get(key)
-                if val:
-                    context_line = f"\nTool: {tool_name} | {key}: {val}"
-                    break
-
-        triggering_pid = metadata.get("triggering_pid") if metadata else None
-        if triggering_pid:
-            last_lines = [
-                f'  get_stored_response(ref_id="{ref_id}", record_key="{triggering_pid}")  → triggering process',
-                f'  get_stored_response(ref_id="{ref_id}", record_index=0)                 → first event (chronological)',
-            ]
-        else:
-            last_lines = [
-                f'  get_stored_response(ref_id="{ref_id}", record_index=0)                → full first record',
-            ]
-
-        parts = [
-            summary,
-            "",
-            f"--- RESPONSE TRUNCATED ({len(text):,} chars) ---",
-            f"Structured data stored as: {ref_id} ({record_count} records){context_line}",
-            "",
-            "To query this data use the get_stored_response tool:",
-            f'  get_stored_response(ref_id="{ref_id}")                                → metadata overview',
-            f'  get_stored_response(ref_id="{ref_id}", fields="source.ip,user.name")  → extract fields',
-            f'  get_stored_response(ref_id="{ref_id}", search="keyword")              → search records',
-            *last_lines,
-        ]
-
-        result = "\n".join(parts)
-        return result if raw else [{"type": "text", "text": result}]
+    # Text exceeds threshold — prefer the structured (in-memory) path.
+    summary = _extract_summary(text)
+    if ref_id:
+        stored = ResponseStore.get(ref_id)
+        result = build_truncation_notice(
+            summary=summary,
+            text_len=len(text),
+            ref_id=ref_id,
+            record_count=stored.record_count if stored else 0,
+            tool_name=tool_name,
+            metadata=metadata,
+        )
     else:
-        # Legacy path — no structured data, use temp file fallback
-        file_path = _write_response_file(text, tool_name or _current_tool_name)
-        summary = _extract_summary(text)
-
+        # Caller didn't provide structured_data — return a summary with no disk write.
+        # Large responses without structured_data are a bug in the calling tool; surface
+        # it loudly so it gets fixed rather than silently spilling sensitive bytes.
         parts = [
             summary,
             "",
-            f"--- RESPONSE TRUNCATED ({len(text):,} chars) ---",
-            f"Full output saved to: {file_path}",
-            "",
-            "To inspect the full data, use bash:",
-            f"  cat '{file_path}' | head -200",
-            f"  python3 -c \"import json; print(open('{file_path}').read()[:5000])\"",
-            f"  grep -i 'keyword' '{file_path}'",
+            f"--- RESPONSE TRUNCATED ({len(text):,} chars, no structured_data) ---",
+            f"Tool '{tool_name or 'unknown'}' returned a response larger than "
+            f"{LARGE_RESPONSE_THRESHOLD:,} chars without calling format_text_response "
+            "with structured_data=. The tail has been dropped. Add structured_data= to "
+            "the tool's format_text_response call to enable get_stored_response lookup.",
         ]
-
         result = "\n".join(parts)
-        return result if raw else [{"type": "text", "text": result}]
+
+    return result if raw else [{"type": "text", "text": result}]
 
 
 def _extract_summary(text: str, max_lines: int = 40) -> str:
@@ -198,35 +171,6 @@ def _extract_summary(text: str, max_lines: int = 40) -> str:
             break
 
     return "\n".join(summary_lines)
-
-
-def _write_response_file(text: str, tool_name: str = "") -> str:
-    """Write a large response to a temp file and return the path."""
-    os.makedirs(MCP_OUTPUT_DIR, exist_ok=True)
-
-    safe_name = tool_name.replace(" ", "_").replace("/", "_") if tool_name else "response"
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"{safe_name}_{timestamp}.txt"
-    file_path = os.path.join(MCP_OUTPUT_DIR, filename)
-
-    with open(file_path, "w") as f:
-        f.write(text)
-
-    _cleanup_old_files(MCP_OUTPUT_DIR, keep=20)
-    return file_path
-
-
-def _cleanup_old_files(directory: str, keep: int = 20) -> None:
-    """Remove oldest files if directory has more than `keep` files."""
-    try:
-        files = sorted(
-            [os.path.join(directory, f) for f in os.listdir(directory) if os.path.isfile(os.path.join(directory, f))],
-            key=os.path.getmtime,
-        )
-        for f in files[:-keep]:
-            os.remove(f)
-    except OSError:
-        pass
 
 
 def format_error_response(error: str) -> List[Dict[str, str]]:

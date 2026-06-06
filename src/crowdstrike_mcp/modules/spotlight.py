@@ -361,7 +361,13 @@ class SpotlightModule(BaseModule):
                 if v["apps"]:
                     lines.append(f"   Apps: {'; '.join(a for a in v['apps'] if a)}")
                 lines.append("")
-        return format_text_response("\n".join(lines), raw=True)
+        return format_text_response(
+            "\n".join(lines),
+            tool_name="spotlight_vulnerabilities",
+            raw=True,
+            structured_data={"vulns": items},
+            metadata={"total": result.get("total"), "after": result.get("after"), "header": header},
+        )
 
     def _vulnerabilities_combined(self, filter, limit=50, facet=None, after=None, sort=None):
         if not SPOTLIGHT_VULNS_AVAILABLE:

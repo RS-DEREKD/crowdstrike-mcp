@@ -25,7 +25,9 @@ class TestTruncationFooterWithTriggeringPid:
             metadata=metadata,
         )
         assert 'record_key="288700987"' in result
-        assert "triggering process" in result.lower()
+        # triggering_pid is still honored as a back-compat alias for the generic
+        # record_key hint; the label is now domain-neutral ("keyed record").
+        assert "keyed record" in result.lower()
 
     def test_footer_still_includes_record_index_0_when_pid_known(self):
         """record_index=0 stays in footer as chronological-first hint."""

@@ -13,6 +13,11 @@ from starlette.responses import JSONResponse
 
 from crowdstrike_mcp.client import FalconClient
 from crowdstrike_mcp.modules.base import _session_client
+from crowdstrike_mcp.response_store import (
+    ResponseStore,
+    reset_response_session,
+    set_response_session,
+)
 
 # Client cache: hash(creds) → (FalconClient, last_access_time)
 _client_cache: dict[str, tuple[FalconClient, float]] = {}
@@ -21,18 +26,20 @@ _CACHE_MAX = 100
 
 
 def _evict_stale():
-    """Remove expired entries from the client cache."""
+    """Remove expired entries from the client cache, dropping their stored responses too."""
     now = time.time()
     expired = [k for k, (_, ts) in _client_cache.items() if now - ts > _CACHE_TTL]
     for k in expired:
         del _client_cache[k]
+        ResponseStore.clear_session(k)
 
 
 def _evict_lru():
-    """Evict least-recently-accessed entry when cache exceeds max size."""
+    """Evict least-recently-accessed entry when cache exceeds max size, with its stored responses."""
     if len(_client_cache) >= _CACHE_MAX:
         oldest_key = min(_client_cache, key=lambda k: _client_cache[k][1])
         del _client_cache[oldest_key]
+        ResponseStore.clear_session(oldest_key)
 
 
 def _extract_headers(scope) -> tuple[str | None, str | None, str | None]:
@@ -98,11 +105,15 @@ def session_auth_middleware(app):
                 await response(scope, receive, send)
                 return
 
-        # Set ContextVar for this request
+        # Set ContextVars for this request. The response store is partitioned by
+        # the same opaque per-credential key so one tenant cannot read another's
+        # stored responses via predictable ref_ids.
         token = _session_client.set(cached_client)
+        store_token = set_response_session(cache_key)
         try:
             await app(scope, receive, send)
         finally:
+            reset_response_session(store_token)
             _session_client.reset(token)
 
     return middleware
