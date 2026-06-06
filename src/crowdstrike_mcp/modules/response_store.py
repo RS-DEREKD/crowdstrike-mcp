@@ -12,7 +12,7 @@ import json
 from typing import TYPE_CHECKING, Annotated, Optional
 
 from crowdstrike_mcp.modules.base import BaseModule
-from crowdstrike_mcp.response_store import ResponseStore
+from crowdstrike_mcp.response_store import ResponseStore, select_records
 from crowdstrike_mcp.utils import format_text_response
 
 if TYPE_CHECKING:
@@ -130,7 +130,9 @@ class ResponseStoreModule(BaseModule):
             )
 
         data = stored.data
-        records = self._find_record_lists(data)
+        # Single primary record collection — avoids conflating heterogeneous
+        # top-level lists (e.g. ngsiem_query's events vs field_projection).
+        flat = select_records(data)
 
         # ref_id only → metadata overview
         if record_index is None and record_key is None and fields is None and search is None:
@@ -138,9 +140,8 @@ class ResponseStoreModule(BaseModule):
 
         # record_index → specific record
         if record_index is not None:
-            if not records:
-                return format_text_response(f"No record lists found in {ref_id}.", raw=True)
-            flat = [r for lst in records.values() for r in lst]
+            if not flat:
+                return format_text_response(f"No records found in {ref_id}.", raw=True)
             if record_index < 0 or record_index >= len(flat):
                 return format_text_response(
                     f"Index {record_index} out of range (0-{len(flat) - 1}).",
@@ -156,7 +157,6 @@ class ResponseStoreModule(BaseModule):
 
         # record_key → find by natural key
         if record_key is not None:
-            flat = [r for lst in records.values() for r in lst]
             match = self._find_by_key(flat, record_key)
             if match is None:
                 available_keys = self._available_keys(flat[0] if flat else {})
@@ -173,8 +173,8 @@ class ResponseStoreModule(BaseModule):
 
         # search → text search
         if search is not None:
-            flat = [r for lst in records.values() for r in lst]
-            matches = [r for r in flat if search.lower() in _stringify_record(r).lower()][:max_results]
+            all_matches = [r for r in flat if search.lower() in _stringify_record(r).lower()]
+            matches = all_matches[:max_results]
             if fields:
                 matches = [self._project_fields(m, fields) for m in matches]
             if not matches:
@@ -182,22 +182,22 @@ class ResponseStoreModule(BaseModule):
                     f"No records matching '{search}' in {ref_id}.",
                     raw=True,
                 )
+            body = json.dumps(matches, indent=2, default=str)
             return format_text_response(
-                json.dumps(matches, indent=2, default=str),
+                self._with_cap_notice(body, len(matches), len(all_matches)),
                 raw=True,
             )
 
         # fields only → extract from all records
         if fields:
-            flat = [r for lst in records.values() for r in lst][:max_results]
-            projected = [self._project_fields(r, fields) for r in flat]
+            shown = flat[:max_results]
+            projected = [self._project_fields(r, fields) for r in shown]
             if projected and self._all_projections_null(projected):
                 # Surface a discoverable warning instead of silently returning
                 # a list of all-null dicts. Helps callers recover when field
                 # paths don't match the underlying record shape (e.g., CQL
                 # field names on alert_analysis-stored data).
-                all_flat = [r for lst in records.values() for r in lst]
-                top_keys = self._top_level_keys(all_flat)
+                top_keys = self._top_level_keys(flat)
                 warning_lines = [
                     "Warning: all requested fields returned null for every record.",
                     f"Requested fields: {fields}",
@@ -208,12 +208,20 @@ class ResponseStoreModule(BaseModule):
                     json.dumps(projected, indent=2, default=str),
                 ]
                 return format_text_response("\n".join(warning_lines), raw=True)
+            body = json.dumps(projected, indent=2, default=str)
             return format_text_response(
-                json.dumps(projected, indent=2, default=str),
+                self._with_cap_notice(body, len(shown), len(flat)),
                 raw=True,
             )
 
         return format_text_response(self._format_metadata(stored), raw=True)
+
+    @staticmethod
+    def _with_cap_notice(body: str, shown: int, total: int) -> str:
+        """Prefix a 'showing N of M' notice when the result set was capped."""
+        if total > shown:
+            return f"[Showing {shown} of {total} records; raise max_results to see more]\n{body}"
+        return body
 
     async def list_stored_responses(self) -> str:
         """List all stored response references."""
@@ -233,11 +241,6 @@ class ResponseStoreModule(BaseModule):
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
-
-    @staticmethod
-    def _find_record_lists(data: dict) -> dict[str, list]:
-        """Find all top-level list values in data."""
-        return {k: v for k, v in data.items() if isinstance(v, list)}
 
     @staticmethod
     def _top_level_keys(records: list[dict]) -> list[str]:
@@ -298,8 +301,7 @@ class ResponseStoreModule(BaseModule):
 
         # Schema hint: surface discoverable field paths so callers don't have
         # to pull a full record just to learn what fields exist.
-        record_lists = cls._find_record_lists(stored.data)
-        flat_records = [r for lst in record_lists.values() for r in lst]
+        flat_records = select_records(stored.data)
         schema_entries = cls._schema_hint(flat_records)
         if schema_entries:
             top_keys = cls._top_level_keys(flat_records)

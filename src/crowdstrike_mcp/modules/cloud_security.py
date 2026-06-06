@@ -421,7 +421,13 @@ class CloudSecurityModule(BaseModule):
             return format_text_response(result["message"], raw=True)
 
         if full:
-            return format_text_response(json.dumps(result, default=str, indent=2), raw=True)
+            return format_text_response(
+                json.dumps(result, default=str, indent=2),
+                tool_name="cloud_get_risk_timeline",
+                raw=True,
+                structured_data={"risks": result.get("risks", []), "changes": result.get("changes", [])},
+                metadata={"asset_id": asset_id, "risk_id": risk_id, "since": since, "full": True},
+            )
 
         asset = result["asset"]
         lines: list[str] = [

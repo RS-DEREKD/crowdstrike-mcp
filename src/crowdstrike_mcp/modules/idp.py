@@ -787,5 +787,12 @@ class IDPModule(BaseModule):
 
         return format_text_response(
             self._format_investigation_response(resolved, investigation_results, investigation_types, include_raw),
+            tool_name="identity_investigate_entity",
             raw=True,
+            structured_data={"entity_ids": list(resolved), "investigations": investigation_results},
+            metadata={
+                "investigation_types": list(investigation_types),
+                "entity_count": len(resolved),
+                "include_raw": include_raw,
+            },
         )
