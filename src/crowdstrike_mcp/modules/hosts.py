@@ -142,7 +142,13 @@ class HostsModule(BaseModule):
         if not result.get("login_history"):
             lines.append("No login history found.")
 
-        return format_text_response("\n".join(lines), raw=True)
+        return format_text_response(
+            "\n".join(lines),
+            tool_name="host_login_history",
+            raw=True,
+            structured_data={"login_history": result.get("login_history", [])},
+            metadata={"device_id": result.get("device_id"), "count": result.get("count")},
+        )
 
     async def host_network_history(
         self,
@@ -170,7 +176,13 @@ class HostsModule(BaseModule):
         if not result.get("network_history"):
             lines.append("No network history found.")
 
-        return format_text_response("\n".join(lines), raw=True)
+        return format_text_response(
+            "\n".join(lines),
+            tool_name="host_network_history",
+            raw=True,
+            structured_data={"network_history": result.get("network_history", [])},
+            metadata={"device_id": result.get("device_id"), "count": result.get("count")},
+        )
 
     # ------------------------------------------------------------------
     # Internal methods (logic from handlers/hosts.py)

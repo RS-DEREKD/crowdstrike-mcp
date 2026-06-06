@@ -314,4 +314,11 @@ def _handle_list_response(
         err = format_api_error(response, f"Failed to {operation_context}", operation=operation_code)
         hint = (status_hints or {}).get(status, "") if status_hints else ""
         return format_text_response(f"Failed to {operation_context}: {err}{hint}", raw=True)
-    return format_text_response(_render_resources(result_header, response), raw=True)
+    body = response.get("body") or {}
+    return format_text_response(
+        _render_resources(result_header, response),
+        tool_name=operation_code,
+        raw=True,
+        structured_data={"resources": body.get("resources") or []},
+        metadata={"operation": operation_code, "meta": body.get("meta") or {}},
+    )

@@ -464,7 +464,10 @@ class TestCloudGetRiskTimelineFormatting:
             "body": SAMPLE_TIMELINE_BODY,
         }
         out = asyncio.run(cloud_module.cloud_get_risk_timeline(asset_id="crn:x", full=True))
-        parsed = json.loads(out)
+        # Strip optional "[Structured data available: resp_###]" footer appended by
+        # format_text_response when structured_data is provided.
+        json_part = out.split("\n\n[Structured data available")[0]
+        parsed = json.loads(json_part)
         assert parsed["success"] is True
         assert parsed["asset"]["cloud_provider"] == "aws"
         assert parsed["total_risks"] == 2
