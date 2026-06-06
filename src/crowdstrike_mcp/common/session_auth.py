@@ -13,6 +13,7 @@ from starlette.responses import JSONResponse
 
 from crowdstrike_mcp.client import FalconClient
 from crowdstrike_mcp.modules.base import _session_client
+from crowdstrike_mcp.response_store import reset_response_session, set_response_session
 
 # Client cache: hash(creds) → (FalconClient, last_access_time)
 _client_cache: dict[str, tuple[FalconClient, float]] = {}
@@ -98,11 +99,15 @@ def session_auth_middleware(app):
                 await response(scope, receive, send)
                 return
 
-        # Set ContextVar for this request
+        # Set ContextVars for this request. The response store is partitioned by
+        # the same opaque per-credential key so one tenant cannot read another's
+        # stored responses via predictable ref_ids.
         token = _session_client.set(cached_client)
+        store_token = set_response_session(cache_key)
         try:
             await app(scope, receive, send)
         finally:
+            reset_response_session(store_token)
             _session_client.reset(token)
 
     return middleware

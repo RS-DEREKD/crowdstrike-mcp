@@ -64,6 +64,18 @@ def load_credentials(config_path: Optional[str] = None) -> Optional[Dict[str, st
         return None
 
 
+def _is_large_payload(data: dict) -> bool:
+    """True if structured data is big enough to warrant storing.
+
+    Lets compact-summary tools (small text, large data — e.g. ngsiem_query) keep
+    a recoverable ref while trivially small responses skip the store entirely.
+    """
+    try:
+        return len(json.dumps(data, default=str)) > LARGE_RESPONSE_THRESHOLD
+    except (TypeError, ValueError):
+        return True  # unserializable → keep it rather than silently drop
+
+
 def format_text_response(
     text: str,
     tool_name: str = "",
@@ -85,11 +97,16 @@ def format_text_response(
         structured_data: Raw structured dict from the tool (opt-in).
         metadata: Query context, filters, alert ID, etc. for the store.
     """
+    # Only persist when something is actually large: either the rendered text
+    # (so the model can recover the truncated tail) or the structured payload
+    # itself (compact-summary tools like ngsiem_query keep text small but carry
+    # large data). Trivially small responses must not consume buffer slots.
+    text_large = len(text) > LARGE_RESPONSE_THRESHOLD
     ref_id = None
-    if structured_data is not None:
+    if structured_data is not None and (text_large or _is_large_payload(structured_data)):
         ref_id = ResponseStore.store(structured_data, tool_name, metadata)
 
-    if len(text) <= LARGE_RESPONSE_THRESHOLD:
+    if not text_large:
         if ref_id:
             text = f"{text}\n\n[Structured data available: {ref_id}]"
         return text if raw else [{"type": "text", "text": text}]
