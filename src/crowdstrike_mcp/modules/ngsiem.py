@@ -2,7 +2,7 @@
 NGSIEM Module — CQL query execution + read-only introspection.
 
 Tools:
-  ngsiem_query                      — Execute CQL query across all CrowdStrike logs
+  ngsiem_query                      — Execute CQL query against a selectable repository (default: search-all)
   ngsiem_list_saved_queries         — Enumerate saved searches
   ngsiem_get_saved_query_template   — Fetch one saved search's body + metadata
   ngsiem_list_lookup_files          — Enumerate lookup files
@@ -22,6 +22,7 @@ is intentionally excluded (credential).
 
 from __future__ import annotations
 
+import os
 import re
 import time
 from datetime import datetime, timezone
@@ -34,6 +35,10 @@ from crowdstrike_mcp.utils import format_text_response
 
 if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
+
+# Search-job polling defaults. Overridable via env so a long hunt isn't cut short by the default ceiling.
+DEFAULT_POLL_INTERVAL_SECONDS = 2
+DEFAULT_TIMEOUT_SECONDS = 300
 
 
 class NGSIEMModule(BaseModule):
@@ -62,7 +67,7 @@ class NGSIEMModule(BaseModule):
             server,
             self.ngsiem_query,
             name="ngsiem_query",
-            description=("Execute NGSIEM/CQL query across all CrowdStrike logs using search-all repository"),
+            description=("Execute an NGSIEM/CQL query against a selectable repository (default: search-all, spanning all CrowdStrike logs)"),
         )
         self._add_tool(
             server,
@@ -151,8 +156,14 @@ class NGSIEMModule(BaseModule):
         ] = None,
         max_results: Annotated[int, "Maximum results to return (default: 100, max: 1000)"] = 100,
         fields: Annotated[Optional[str], "Comma-separated field names for server-side projection via select()"] = None,
+        repository: Annotated[
+            str,
+            "Repository to search. Options: search-all (default, all event data), investigate_view "
+            "(endpoint events), third-party (third-party source events), falcon_for_it_view (Falcon for IT "
+            "data), forensics_view (Falcon Forensics triage data).",
+        ] = "search-all",
     ) -> str:
-        """Execute a CQL query on the search-all repository."""
+        """Execute a CQL query against an NGSIEM repository (default: search-all)."""
         max_results = min(max(max_results, 1), 1000)
 
         result = self._execute_query(
@@ -162,6 +173,7 @@ class NGSIEMModule(BaseModule):
             end_time=end_time,
             max_results=max_results,
             fields=fields,
+            repository=repository,
         )
 
         if result.get("success"):
@@ -170,7 +182,7 @@ class NGSIEMModule(BaseModule):
                 "NGSIEM Query Results (All Logs):",
                 f"Query: {result['query']}",
                 f"Time Range: {result['time_range']}",
-                "Repository: search-all (global)",
+                f"Repository: {repository}",
                 f"Events Processed: {result['events_processed']:,}",
                 f"Events Matched: {result['events_matched']:,}",
                 f"Events Returned: {result['events_returned']}",
@@ -247,13 +259,19 @@ class NGSIEMModule(BaseModule):
         end_time: str | None = None,
         max_results: int = 100,
         fields: str | None = None,
+        repository: str | None = None,
     ) -> dict:
         """Execute a complete NGSIEM query. Returns result dict.
 
         When ``start_time`` is supplied an absolute window is used (converted
         to epoch-ms); otherwise the relative ``time_range`` string is sent
         through unchanged (the API accepts '1d', '7d', ...).
+
+        ``repository`` selects the NGSIEM repository; when omitted the module
+        default (``self.repository``) is used so existing internal callers are
+        unaffected.
         """
+        repo = repository or self.repository
         # Resolve the time window into API params + a human-readable label.
         try:
             if start_time:
@@ -290,7 +308,7 @@ class NGSIEMModule(BaseModule):
         try:
             falcon = self._service(NGSIEM)
             search_kwargs = {
-                "repository": self.repository,
+                "repository": repo,
                 "query_string": timestamped_query,
                 "start": api_start,
                 "is_live": False,
@@ -332,14 +350,16 @@ class NGSIEMModule(BaseModule):
         except Exception as e:
             return {"success": False, "error": f"Search start error: {str(e)}"}
 
-        # Wait for completion
+        # Wait for completion. Poll/timeout are env-tunable so long hunts
+        # aren't cut short by the default ceiling.
         try:
             start = time.time()
-            timeout = 120  # 2 minute timeout
+            timeout = int(os.environ.get("FALCON_MCP_NGSIEM_TIMEOUT", str(DEFAULT_TIMEOUT_SECONDS)))
+            poll_interval = int(os.environ.get("FALCON_MCP_NGSIEM_POLL_INTERVAL", str(DEFAULT_POLL_INTERVAL_SECONDS)))
 
             while time.time() - start < timeout:
                 status_response = falcon.get_search_status(
-                    repository=self.repository,
+                    repository=repo,
                     search_id=search_id,
                 )
 
@@ -383,15 +403,15 @@ class NGSIEMModule(BaseModule):
                     messages = body.get("messages", [])
                     return {"success": False, "error": f"Search error: {messages}"}
 
-                time.sleep(2)
+                time.sleep(poll_interval)
 
             # Timeout
-            falcon.stop_search(repository=self.repository, id=search_id)
+            falcon.stop_search(repository=repo, id=search_id)
             return {"success": False, "error": f"Query timed out after {timeout} seconds"}
 
         except Exception as e:
             try:
-                falcon.stop_search(repository=self.repository, id=search_id)
+                falcon.stop_search(repository=repo, id=search_id)
             except Exception:
                 pass
             return {"success": False, "error": f"Query execution error: {str(e)}"}
