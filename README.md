@@ -414,6 +414,8 @@ crowdstrike-mcp [OPTIONS]
 | `--host` | `FALCON_MCP_HOST` | `127.0.0.1` | HTTP bind address |
 | `--port` | `FALCON_MCP_PORT` | `8000` | HTTP port |
 | `--api-key` | `FALCON_MCP_API_KEY` | — | API key for HTTP auth |
+| — | `FALCON_MCP_NGSIEM_TIMEOUT` | `300` | Max seconds to poll for an `ngsiem_query` search job before timing out |
+| — | `FALCON_MCP_NGSIEM_POLL_INTERVAL` | `2` | Seconds between `ngsiem_query` search-status polls |
 
 ### Selective Module Loading
 
