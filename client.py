@@ -40,6 +40,7 @@ class FalconClient:
         client_secret: Optional[str] = None,
         base_url: Optional[str] = None,
         credential_file: Optional[str] = None,
+        allow_writes: Optional[bool] = None,
     ):
         resolved = self._resolve_credentials(
             client_id, client_secret, base_url, credential_file
@@ -48,6 +49,11 @@ class FalconClient:
         self._client_secret = resolved["client_secret"]
         self._base_url = resolved["base_url"]
         self._auth: Optional[OAuth2] = None
+        self.allow_writes: bool = (
+            allow_writes
+            if allow_writes is not None
+            else os.environ.get("FALCON_MCP_ALLOW_WRITES", "").lower() in ("1", "true", "yes")
+        )
 
     # ------------------------------------------------------------------
     # Public API
@@ -170,3 +176,4 @@ class FalconClient:
         except (FileNotFoundError, json.JSONDecodeError, OSError) as e:
             print(f"[FalconClient] Could not load {path}: {e}", file=sys.stderr)
             return None
+

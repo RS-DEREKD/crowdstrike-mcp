@@ -55,18 +55,21 @@ class FalconMCPServer:
         client_id: str | None = None,
         client_secret: str | None = None,
         base_url: str | None = None,
+        allow_writes: bool = False,
     ):
         self.transport = transport
         self.debug = debug
         self.host = host
         self.port = port
         self.api_key = api_key
+        self.allow_writes = allow_writes
 
         # Create shared API client and verify credentials eagerly
         self.client = FalconClient(
             client_id=client_id,
             client_secret=client_secret,
             base_url=base_url,
+            allow_writes=allow_writes,
         )
         self.client.authenticate()
 
@@ -132,6 +135,13 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
+        "--allow-writes",
+        action="store_true",
+        default=os.environ.get("FALCON_MCP_ALLOW_WRITES", "").lower() in ("1", "true", "yes"),
+        help="Enable write/mutation operations",
+    )
+
+    parser.add_argument(
         "--transport",
         default=os.environ.get("FALCON_MCP_TRANSPORT", "stdio"),
         choices=["stdio", "sse", "streamable-http"],
@@ -183,6 +193,7 @@ def main():
         host=args.host,
         port=args.port,
         api_key=args.api_key,
+        allow_writes=args.allow_writes,
     )
 
     falcon_server.run()
@@ -190,3 +201,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+

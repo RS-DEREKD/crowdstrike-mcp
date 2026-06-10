@@ -9,6 +9,7 @@ Each module:
 
 from __future__ import annotations
 
+import re
 import sys
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Callable
@@ -25,6 +26,7 @@ class BaseModule(ABC):
         self.client = client
         self.tools: list[str] = []
         self.resources: list[str] = []
+        self._allow_writes: bool = getattr(client, "allow_writes", False)
 
     @abstractmethod
     def register_tools(self, server: FastMCP) -> None:
@@ -46,6 +48,7 @@ class BaseModule(ABC):
         method: Callable,
         name: str,
         description: str | None = None,
+        requires_write: bool | None = None,
     ) -> None:
         """Register a tool function with the server and track it.
 
@@ -55,11 +58,29 @@ class BaseModule(ABC):
             name: Tool name (e.g. ``"ngsiem_query"``).
             description: Optional tool description override.
         """
+        if requires_write is None:
+            requires_write = self._is_write_tool(name)
+
+        if requires_write and not self._allow_writes:
+            self._log(f"Skipping write tool '{name}' (allow-writes disabled)")
+            return
+
         kwargs = {"name": name}
         if description:
             kwargs["description"] = description
         server.tool(**kwargs)(method)
         self.tools.append(name)
+
+    
+    @staticmethod
+    def _is_write_tool(name: str) -> bool:
+        """Infer whether a tool performs mutation based on name tokens."""
+        verb_tokens = {
+            "create", "update", "delete", "remove", "add",
+            "upload", "put", "set", "apply", "import", "sync",
+        }
+        tokens = [t for t in re.split(r"[_\-]", name.lower()) if t]
+        return any(t in verb_tokens for t in tokens)
 
     def _add_resource(self, server: FastMCP, resource) -> None:
         """Register an MCP resource and track its URI."""
@@ -70,3 +91,6 @@ class BaseModule(ABC):
     def _log(self, message: str) -> None:
         """Log to stderr for MCP server debugging."""
         print(f"[{self.__class__.__name__}] {message}", file=sys.stderr)
+
+
+
