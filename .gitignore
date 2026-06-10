@@ -21,3 +21,13 @@ credentials.json
 
 # Debug/diagnostic utilities
 mcp-debug/
+
+# hatch-vcs generated version file
+src/crowdstrike_mcp/_version.py
+dist/
+
+# Git worktrees
+.worktrees/
+
+# Vendored reference (not for distribution)
+falcon_mcp_idp.py
